@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(node -e \"require\\('bcryptjs'\\); require\\('jsonwebtoken'\\); console.log\\('OK'\\)\")",
+      "Bash(npx tsc:*)",
+      "Bash(timeout 10 npx ts-node-dev --transpile-only src/index.ts)",
+      "Bash(node dist/index.js)",
+      "Bash(curl -s http://localhost:3001/api/health)",
+      "Bash(curl -s -X POST http://localhost:3001/api/auth/login -H \"Content-Type: application/json\" -d '{\"personalNumber\":\"8234567\",\"password\":\"password\"}')",
+      "Bash(npx node-pre-gyp:*)",
+      "Bash(node -e \"const db = require\\('better-sqlite3'\\)\\(':memory:'\\); console.log\\(db.prepare\\('SELECT 1 as n'\\).get\\(\\)\\); db.close\\(\\);\")",
+      "Bash(node:*)",
+      "Read(//tmp/**)",
+      "Bash(curl -s http://localhost:3001/api/auth/me -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ0ZWNoMDAxIiwicm9sZSI6InRlY2huaWNpYW4iLCJzZXNzaW9uSWQiOiJlMWM4ZWUxMS01ZGJkLTRiZDgtOGNmOC03MzliMDAyNjc5MTUiLCJpYXQiOjE3NzUzNDIwMDMsImV4cCI6MTc3NTM3MDgwM30.txQn2j9CMsEHgDodglm73nM996qlYJ_32dAD3Hb3Vrg')",
+      "Bash(curl -s 'http://localhost:3001/api/rules?status=active' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ0ZWNoMDAxIiwicm9sZSI6InRlY2huaWNpYW4iLCJzZXNzaW9uSWQiOiJlMWM4ZWUxMS01ZGJkLTRiZDgtOGNmOC03MzliMDAyNjc5MTUiLCJpYXQiOjE3NzUzNDIwMDMsImV4cCI6MTc3NTM3MDgwM30.txQn2j9CMsEHgDodglm73nM996qlYJ_32dAD3Hb3Vrg')",
+      "Bash(curl -s -X POST http://localhost:3001/api/auth/login -H 'Content-Type: application/json' -d '{\"personalNumber\":\"6012345\",\"password\":\"password\"}' -o /tmp/login.json)",
+      "Bash(netstat -ano)",
+      "Bash(cmd.exe /c \"taskkill /F /PID 23164\")",
+      "Bash(grep -v \"Use \\\\`node\")",
+      "Bash(cmd.exe:*)",
+      "Bash(powershell -Command \"Stop-Process -Id 23164 -Force\")",
+      "Bash(powershell -Command \"Stop-Process -Name node -Force -ErrorAction SilentlyContinue\")"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "claude-flow"
+  ],
+  "enableAllProjectMcpServers": true
+}

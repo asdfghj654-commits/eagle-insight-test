@@ -2,18 +2,20 @@
 // UX pattern inspired by Streamlit Movies demo: scatter + side histograms + sigma slider +
 // outlier-first review + top/bottom correlation pairs.
 // Data source: Apache-2.0 / UW IDL inspiration for interaction grammar only.
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import {
   ComposedChart, Scatter, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Cell, BarChart, Bar,
 } from 'recharts';
-import { TrendingUp, Target, Activity, AlertTriangle, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { TrendingUp, Target, Activity, AlertTriangle, ArrowUpRight, ArrowDownRight, Search, MoreVertical } from 'lucide-react';
 import { useCSVData } from '@/contexts/CSVDataContext';
 import { DataAdapter } from '@/lib/data-adapter';
+import { ChartToolbar, HelpTooltip, ProgressCell, FullscreenOverlay, FloatingSearchPopup, ColumnContextMenu, useColumnConfigs } from './ChartToolbar';
 
 // ─── Regression helpers ───────────────────────────────────────────────────────
 
@@ -93,6 +95,23 @@ export const CorrelationsTab: React.FC = () => {
   const [regressionMode, setRegressionMode] = useState<'linear' | 'none'>('linear');
   const [selectedXParam, setSelectedXParam] = useState('');
   const [selectedYParam, setSelectedYParam] = useState('');
+
+  // Toolbar state
+  const [showTable,    setShowTable]    = useState(false);
+  const [showSearch,   setShowSearch]   = useState(false);
+  const [searchQuery,  setSearchQuery]  = useState('');
+  const [currentMatchIdx, setCurrentMatchIdx] = useState(0);
+  const [fullscreen,   setFullscreen]   = useState(false);
+  const [tableSortCol, setTableSortCol] = useState<'x'|'y'|'residual'|'tail'|'phase'>('residual');
+  const [tableSortDir, setTableSortDir] = useState<'asc'|'desc'>('desc');
+  const [selectedRow,  setSelectedRow]  = useState<number | null>(null);
+  const [colMenuKey,   setColMenuKey]   = useState<string | null>(null);
+  const [colMenuAnchor,setColMenuAnchor]= useState<HTMLElement | null>(null);
+  const [outlierRow,   setOutlierRow]   = useState<number | null>(null);
+  const [outlierColMenuKey, setOutlierColMenuKey] = useState<string | null>(null);
+  const [outlierColMenuAnchor, setOutlierColMenuAnchor] = useState<HTMLElement | null>(null);
+  const scatterChartRef = useRef<HTMLDivElement>(null);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
 
   // ── Correlation matrix ────────────────────────────────────────────────────
   const correlationMatrix = useMemo(() => {
@@ -194,6 +213,76 @@ export const CorrelationsTab: React.FC = () => {
   const xLabel = DataAdapter.getParameterDisplayName(selectedXParam);
   const yLabel = DataAdapter.getParameterDisplayName(selectedYParam);
 
+  // Column configs for main scatter table
+  const scatterColDefs = useMemo(() => [
+    { key: 'tail', label: 'זנב' }, { key: 'phase', label: 'שלב' },
+    { key: 'x', label: xLabel }, { key: 'y', label: yLabel },
+    { key: 'residual', label: 'סטייה' }, { key: 'outlier', label: 'חריג?' },
+  ], [xLabel, yLabel]);
+  const colCfg = useColumnConfigs(scatterColDefs);
+
+  // Column configs for outlier table
+  const outlierColDefs = useMemo(() => [
+    { key: 'tail', label: 'זנב' }, { key: 'phase', label: 'שלב' },
+    { key: 'x', label: xLabel }, { key: 'y', label: yLabel }, { key: 'residual', label: 'סטייה' },
+  ], [xLabel, yLabel]);
+  const outlierColCfg = useColumnConfigs(outlierColDefs);
+
+  // Search match indices for floating search popup
+  const matchIndices = useMemo(() => {
+    if (!searchQuery.trim() || !showSearch) return [];
+    const q = searchQuery.toLowerCase();
+    return tableData.reduce<number[]>((acc, r, i) => {
+      if (r.tail_number?.toLowerCase().includes(q) || r.flight_id?.toLowerCase().includes(q) || r.phase?.toLowerCase().includes(q))
+        acc.push(i);
+      return acc;
+    }, []);
+  }, [tableData, searchQuery, showSearch]);
+
+  // Table: sort only (floating search highlights in-place, no filter)
+  const tableData = useMemo(() => {
+    const rows = [...scatterData];
+    rows.sort((a, b) => {
+      const dir = tableSortDir === 'asc' ? 1 : -1;
+      switch (tableSortCol) {
+        case 'x': return dir * (a.x - b.x);
+        case 'y': return dir * (a.y - b.y);
+        case 'residual': return dir * (a.residual - b.residual);
+        case 'tail': return dir * a.tail_number.localeCompare(b.tail_number);
+        case 'phase': return dir * a.phase.localeCompare(b.phase);
+        default: return 0;
+      }
+    });
+    return rows;
+  }, [scatterData, searchQuery, tableSortCol, tableSortDir]);
+
+  const maxX = useMemo(() => Math.max(...scatterData.map(d => Math.abs(d.x)), 1), [scatterData]);
+  const maxY = useMemo(() => Math.max(...scatterData.map(d => Math.abs(d.y)), 1), [scatterData]);
+  const maxResidual = useMemo(() => Math.max(...scatterData.map(d => d.residual), 0.001), [scatterData]);
+
+  const toggleTableSort = (col: typeof tableSortCol) => {
+    if (tableSortCol === col) setTableSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setTableSortCol(col); setTableSortDir('desc'); }
+    setSelectedRow(null);
+  };
+
+  const navigateMatch = (dir: 'up' | 'down') => {
+    if (matchIndices.length === 0) return;
+    setCurrentMatchIdx(prev => {
+      const next = dir === 'down'
+        ? (prev + 1) % matchIndices.length
+        : (prev - 1 + matchIndices.length) % matchIndices.length;
+      // Scroll to match row
+      const row = tableContainerRef.current?.querySelector(`[data-row="${matchIndices[next]}"]`);
+      row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      return next;
+    });
+  };
+  const SortIcon: React.FC<{col: typeof tableSortCol}> = ({ col }) => {
+    if (tableSortCol !== col) return <span className="opacity-30">↕</span>;
+    return tableSortDir === 'asc' ? <span>↑</span> : <span>↓</span>;
+  };
+
   const selectedCorr = correlationMatrix.find(
     c => (c.paramX === selectedXParam && c.paramY === selectedYParam) ||
          (c.paramX === selectedYParam && c.paramY === selectedXParam),
@@ -232,6 +321,7 @@ export const CorrelationsTab: React.FC = () => {
   const significantCorrs = correlationMatrix.filter(c => c.significant);
 
   return (
+    <TooltipProvider>
     <div className="space-y-5" dir="rtl">
 
       {/* ── Controls ── */}
@@ -292,6 +382,7 @@ export const CorrelationsTab: React.FC = () => {
               <CardTitle className="text-sm flex items-center gap-2">
                 <ArrowUpRight className="h-4 w-4 text-primary" />
                 קורלציות חזקות ביותר
+                <HelpTooltip text="מחושב על בסיס מקדם הקורלציה של פירסון בין כל זוג פרמטרים. ערך קרוב ל-1 מצביע על קשר לינארי חיובי חזק, ערך קרוב ל-0 מצביע על העדר קשר. לחץ על שורה לניתוח מפורט." />
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -374,7 +465,10 @@ export const CorrelationsTab: React.FC = () => {
             <Card>
               <CardContent className="pt-4 pb-3">
                 <div className="text-2xl font-bold tabular-nums">{scatterData.length}</div>
-                <div className="text-xs text-muted-foreground">נקודות נתון</div>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  נקודות נתון
+                  <HelpTooltip text="מספר רשומות הנתונים שנכללו בניתוח, לאחר סינון ערכים חסרים בשני הפרמטרים הנבחרים." />
+                </div>
               </CardContent>
             </Card>
             <Card>
@@ -382,7 +476,10 @@ export const CorrelationsTab: React.FC = () => {
                 <div className={`text-2xl font-bold tabular-nums ${corrColor(selectedCorr?.correlation ?? 0)}`}>
                   {selectedCorr ? selectedCorr.correlation.toFixed(3) : '—'}
                 </div>
-                <div className="text-xs text-muted-foreground">מקדם קורלציה (r)</div>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  מקדם קורלציה (r)
+                  <HelpTooltip text="מקדם הקורלציה של פירסון. טווח: -1 עד 1. ערך קרוב ל-1 = קשר לינארי חיובי חזק; קרוב ל-0 = אין קשר; קרוב ל-(-1) = קשר שלילי חזק." />
+                </div>
               </CardContent>
             </Card>
             <Card>
@@ -390,7 +487,10 @@ export const CorrelationsTab: React.FC = () => {
                 <div className="text-2xl font-bold tabular-nums">
                   {regression ? regression.rSquared.toFixed(3) : '—'}
                 </div>
-                <div className="text-xs text-muted-foreground">R² (מקדם דטרמינציה)</div>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  R² (מקדם דטרמינציה)
+                  <HelpTooltip text="R² מבטא את אחוז השונות ב-Y שמוסבר על ידי X לפי מודל הרגרסיה הלינארית. R²=1 = התאמה מושלמת; R²=0 = המודל אינו מסביר דבר." />
+                </div>
               </CardContent>
             </Card>
             <Card className={outlierCount > 0 ? 'border-red-200 bg-red-50/30 dark:bg-red-900/10' : ''}>
@@ -398,125 +498,213 @@ export const CorrelationsTab: React.FC = () => {
                 <div className={`text-2xl font-bold tabular-nums ${outlierCount > 0 ? 'text-red-500' : ''}`}>
                   {outlierCount}
                 </div>
-                <div className="text-xs text-muted-foreground">חריגים ({sigmaThreshold[0].toFixed(1)}σ)</div>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  חריגים ({sigmaThreshold[0].toFixed(1)}σ)
+                  <HelpTooltip text={`נקודות שסטייתן מקו הרגרסיה עולה על ${sigmaThreshold[0].toFixed(1)} כפול סטיית התקן של השאריות. ניתן לשנות את הסף בהגדרות.`} />
+                </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Main scatter chart */}
+          {/* Main scatter chart / table */}
           <Card>
             <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm">
-                  {xLabel} vs {yLabel}
-                </CardTitle>
-                <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <span className="inline-block w-2 h-2 rounded-full bg-primary/50" />
-                    תוך טווח
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="inline-block w-2 h-2 rounded-full bg-red-500" />
-                    חריגים ({outlierCount})
-                  </span>
-                  {regression && (
-                    <span className="flex items-center gap-1">
-                      <span className="inline-block w-4 border-t border-primary" style={{ display: 'inline-block', width: 14, borderTop: '2px solid hsl(var(--primary))' }} />
-                      רגרסיה
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <CardTitle className="text-sm flex items-center gap-2 flex-wrap">
+                    {xLabel} vs {yLabel}
+                    <HelpTooltip text="הנקודות הכחולות הן ערכים בטווח הרגרסיה. נקודות אדומות הן חריגים — סטייתן מקו הרגרסיה עולה על הסף שהוגדר. הקו הכחול המלא הוא ממשוואת הרגרסיה, הקווים המקווקווים הם רצועת הביטחון ±σ." />
+                    <span className="text-muted-foreground font-normal text-[11px]">
+                      {showTable ? '— תצוגת טבלה' : '— תצוגת גרף'}
                     </span>
+                  </CardTitle>
+                  {regression && !showTable && (
+                    <CardDescription className="text-[11px] mt-0.5">
+                      y = {regression.slope.toFixed(3)}x + {regression.intercept.toFixed(3)} | σ = {regression.stdDev.toFixed(3)}
+                    </CardDescription>
                   )}
                 </div>
+
+                {/* Chart toolbar */}
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {!showTable && (
+                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <span className="inline-block w-2 h-2 rounded-full bg-primary/50" />תוך טווח
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span className="inline-block w-2 h-2 rounded-full bg-red-500" />חריגים ({outlierCount})
+                      </span>
+                    </div>
+                  )}
+                  {showTable && (
+                    <button
+                      onClick={() => { setShowSearch(v => !v); setSearchQuery(''); setCurrentMatchIdx(0); }}
+                      className={`inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors ${showSearch ? 'bg-muted text-foreground' : ''}`}
+                      title="חפש בטבלה (Ctrl+F)"
+                    >
+                      <Search className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  <ChartToolbar
+                    chartRef={scatterChartRef}
+                    csvData={scatterData.map(p => ({ זנב: p.tail_number, טיסה: p.flight_id, שלב: p.phase, [xLabel]: p.x, [yLabel]: p.y, סטייה: p.residual, חריג: p.isOutlier ? 'כן' : 'לא' }))}
+                    exportFilename={`correlation_${selectedXParam}_${selectedYParam}`}
+                    onToggleTable={() => { setShowTable(v => !v); setShowSearch(false); setSearchQuery(''); setSelectedRow(null); }}
+                    showingTable={showTable}
+                    onFullscreen={() => setFullscreen(true)}
+                  />
+                </div>
               </div>
-              {regression && (
-                <CardDescription className="text-[11px]">
-                  y = {regression.slope.toFixed(3)}x + {regression.intercept.toFixed(3)} | σ = {regression.stdDev.toFixed(3)}
-                </CardDescription>
-              )}
+
             </CardHeader>
-            <CardContent>
-              <div className="h-80">
+
+            <CardContent className="p-0">
+              {!showTable ? (
+                /* Chart view */
+                <div className="h-80 px-4 pb-4 pt-2">
+                  <div ref={scatterChartRef} className="h-full">
+
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart margin={{ top: 10, right: 20, bottom: 40, left: 40 }}>
+                        <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+                        <XAxis type="number" dataKey="x" domain={['auto', 'auto']}
+                          label={{ value: xLabel, position: 'insideBottom', offset: -12, fontSize: 11 }}
+                          tick={{ fontSize: 10 }} />
+                        <YAxis type="number" dataKey="y" domain={['auto', 'auto']}
+                          label={{ value: yLabel, angle: -90, position: 'insideLeft', fontSize: 11 }}
+                          tick={{ fontSize: 10 }} />
+                        <Tooltip content={<CustomTooltip />} />
+                        {regression && regressionMode === 'linear' && (
+                          <Line data={regressionLineData} dataKey="y" stroke="hsl(var(--primary))" strokeWidth={1.5} dot={false} type="linear" isAnimationActive={false} activeDot={false} legendType="none" />
+                        )}
+                        {regression && regressionMode === 'linear' && (
+                          <Line data={upperBandData} dataKey="y" stroke="hsl(var(--primary))" strokeWidth={1} strokeDasharray="4 3" dot={false} type="linear" isAnimationActive={false} activeDot={false} legendType="none" opacity={0.35} />
+                        )}
+                        {regression && regressionMode === 'linear' && (
+                          <Line data={lowerBandData} dataKey="y" stroke="hsl(var(--primary))" strokeWidth={1} strokeDasharray="4 3" dot={false} type="linear" isAnimationActive={false} activeDot={false} legendType="none" opacity={0.35} />
+                        )}
+                        <Scatter data={scatterData} isAnimationActive={false}>
+                          {scatterData.map((p, i) => (
+                            <Cell key={`cell-${i}`} fill={p.isOutlier ? 'hsl(var(--destructive))' : 'hsl(var(--primary))'} fillOpacity={p.isOutlier ? 0.85 : 0.45} r={p.isOutlier ? 4 : 3} />
+                          ))}
+                        </Scatter>
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              ) : (
+                /* Table view — Excel-like with floating search, column context menu, row selection */
+                <div className="relative">
+                  <FloatingSearchPopup
+                    isOpen={showSearch}
+                    onClose={() => { setShowSearch(false); setSearchQuery(''); setCurrentMatchIdx(0); }}
+                    value={searchQuery}
+                    onChange={v => { setSearchQuery(v); setCurrentMatchIdx(0); }}
+                    matchCount={matchIndices.length}
+                    currentMatch={currentMatchIdx}
+                    onNavigate={navigateMatch}
+                    placeholder="חיפוש לפי זנב, טיסה, שלב…"
+                  />
+                  <div ref={tableContainerRef} className={`overflow-auto max-h-80 ${showSearch ? 'pt-10' : ''}`}>
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-muted/90 backdrop-blur border-b z-10">
+                        <tr>
+                          <th className="px-3 py-2 text-right text-muted-foreground font-medium w-8">#</th>
+                          {colCfg.visibleCols.map(col => (
+                            <th key={col.key}
+                              style={{ textAlign: colCfg.getAlign(col.key) }}
+                              className="px-3 py-2 cursor-pointer hover:bg-muted/50 select-none group relative"
+                              onClick={() => { if (col.key === 'tail') toggleTableSort('tail'); else if (col.key === 'phase') toggleTableSort('phase'); else if (col.key === 'x') toggleTableSort('x'); else if (col.key === 'y') toggleTableSort('y'); else if (col.key === 'residual') toggleTableSort('residual'); }}>
+                              <span className="flex items-center gap-1 justify-end">
+                                {col.key === 'residual' && <HelpTooltip text="המרחק של הנקודה מקו הרגרסיה. ערך גבוה = נקודה חריגה." />}
+                                {colCfg.getLabel(col.key, col.label)}
+                                {(['tail','phase','x','y','residual'] as const).includes(col.key as any) && <SortIcon col={col.key as any} />}
+                                {colCfg.hasChanges(col.key) && <span className="h-1.5 w-1.5 rounded-full bg-amber-500 flex-shrink-0" />}
+                                <button
+                                  className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-muted transition-opacity flex-shrink-0"
+                                  onClick={e => { e.stopPropagation(); setColMenuKey(col.key); setColMenuAnchor(e.currentTarget); }}
+                                  title="הגדרות עמודה"
+                                >
+                                  <MoreVertical className="h-3 w-3" />
+                                </button>
+                              </span>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {tableData.slice(0, 200).map((p, i) => {
+                          const isMatch = matchIndices.includes(i);
+                          const isCurrent = matchIndices[currentMatchIdx] === i;
+                          return (
+                            <tr
+                              key={i}
+                              data-row={i}
+                              onClick={() => setSelectedRow(prev => prev === i ? null : i)}
+                              className={`cursor-pointer transition-colors ${
+                                selectedRow === i ? 'bg-primary/10 ring-1 ring-inset ring-primary/30' :
+                                isCurrent ? 'bg-amber-100/60 dark:bg-amber-900/30' :
+                                isMatch ? 'bg-yellow-50/60 dark:bg-yellow-900/20' :
+                                p.isOutlier ? 'bg-red-50/20 dark:bg-red-900/10 hover:bg-red-50/40' :
+                                'hover:bg-muted/30'
+                              }`}
+                            >
+                              <td className="px-3 py-1.5 text-muted-foreground">{i + 1}</td>
+                              {!colCfg.isHidden('tail') && <td style={{ textAlign: colCfg.getAlign('tail') }} className="px-3 py-1.5 font-mono">{p.tail_number}</td>}
+                              {!colCfg.isHidden('phase') && <td style={{ textAlign: colCfg.getAlign('phase') }} className="px-3 py-1.5 text-muted-foreground">{p.phase}</td>}
+                              {!colCfg.isHidden('x') && <td style={{ textAlign: colCfg.getAlign('x') }} className="px-3 py-1.5"><ProgressCell value={p.x} max={maxX} color="hsl(var(--primary))" precision={3} /></td>}
+                              {!colCfg.isHidden('y') && <td style={{ textAlign: colCfg.getAlign('y') }} className="px-3 py-1.5"><ProgressCell value={p.y} max={maxY} color="hsl(142 76% 36%)" precision={3} /></td>}
+                              {!colCfg.isHidden('residual') && <td style={{ textAlign: colCfg.getAlign('residual') }} className="px-3 py-1.5"><ProgressCell value={p.residual} max={maxResidual} color={p.isOutlier ? '#ef4444' : 'hsl(var(--muted-foreground))'} precision={3} /></td>}
+                              {!colCfg.isHidden('outlier') && <td className="px-3 py-1.5">{p.isOutlier && <Badge variant="destructive" className="text-[10px] h-4 px-1">חריג</Badge>}</td>}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    {tableData.length === 0 && <div className="py-8 text-center text-muted-foreground text-xs">אין נתונים</div>}
+                    {tableData.length > 200 && <div className="px-4 py-2 text-xs text-muted-foreground border-t">מוצגות 200 מתוך {tableData.length} שורות</div>}
+                  </div>
+                  {/* Column context menu */}
+                  {colMenuKey && (
+                    <ColumnContextMenu
+                      colKey={colMenuKey}
+                      defaultLabel={scatterColDefs.find(c => c.key === colMenuKey)?.label ?? colMenuKey}
+                      config={colCfg.configs[colMenuKey] ?? {}}
+                      onUpdate={u => colCfg.updateColumn(colMenuKey, u)}
+                      onReset={() => colCfg.resetColumn(colMenuKey)}
+                      onSortAsc={['tail','phase','x','y','residual'].includes(colMenuKey) ? () => { setTableSortCol(colMenuKey as any); setTableSortDir('asc'); } : undefined}
+                      onSortDesc={['tail','phase','x','y','residual'].includes(colMenuKey) ? () => { setTableSortCol(colMenuKey as any); setTableSortDir('desc'); } : undefined}
+                      onClose={() => { setColMenuKey(null); setColMenuAnchor(null); }}
+                      anchorEl={colMenuAnchor}
+                    />
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Fullscreen overlay */}
+          <FullscreenOverlay isOpen={fullscreen} onClose={() => setFullscreen(false)} title={`${xLabel} vs ${yLabel} — מסך מלא`}>
+            <div className="h-[calc(100vh-120px)]">
+              <div ref={scatterChartRef} className="h-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart margin={{ top: 10, right: 20, bottom: 40, left: 40 }}>
+                  <ComposedChart margin={{ top: 20, right: 40, bottom: 60, left: 60 }}>
                     <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
-                    <XAxis
-                      type="number"
-                      dataKey="x"
-                      domain={['auto', 'auto']}
-                      label={{ value: xLabel, position: 'insideBottom', offset: -12, fontSize: 11 }}
-                      tick={{ fontSize: 10 }}
-                    />
-                    <YAxis
-                      type="number"
-                      dataKey="y"
-                      domain={['auto', 'auto']}
-                      label={{ value: yLabel, angle: -90, position: 'insideLeft', fontSize: 11 }}
-                      tick={{ fontSize: 10 }}
-                    />
+                    <XAxis type="number" dataKey="x" domain={['auto','auto']} label={{ value: xLabel, position: 'insideBottom', offset: -20, fontSize: 13 }} tick={{ fontSize: 11 }} />
+                    <YAxis type="number" dataKey="y" domain={['auto','auto']} label={{ value: yLabel, angle: -90, position: 'insideLeft', fontSize: 13 }} tick={{ fontSize: 11 }} />
                     <Tooltip content={<CustomTooltip />} />
-
-                    {/* Regression line */}
-                    {regression && regressionMode === 'linear' && (
-                      <Line
-                        data={regressionLineData}
-                        dataKey="y"
-                        stroke="hsl(var(--primary))"
-                        strokeWidth={1.5}
-                        dot={false}
-                        type="linear"
-                        isAnimationActive={false}
-                        activeDot={false}
-                        legendType="none"
-                      />
-                    )}
-                    {/* Upper confidence bound */}
-                    {regression && regressionMode === 'linear' && (
-                      <Line
-                        data={upperBandData}
-                        dataKey="y"
-                        stroke="hsl(var(--primary))"
-                        strokeWidth={1}
-                        strokeDasharray="4 3"
-                        dot={false}
-                        type="linear"
-                        isAnimationActive={false}
-                        activeDot={false}
-                        legendType="none"
-                        opacity={0.35}
-                      />
-                    )}
-                    {/* Lower confidence bound */}
-                    {regression && regressionMode === 'linear' && (
-                      <Line
-                        data={lowerBandData}
-                        dataKey="y"
-                        stroke="hsl(var(--primary))"
-                        strokeWidth={1}
-                        strokeDasharray="4 3"
-                        dot={false}
-                        type="linear"
-                        isAnimationActive={false}
-                        activeDot={false}
-                        legendType="none"
-                        opacity={0.35}
-                      />
-                    )}
-
-                    {/* Scatter points colored by outlier status */}
+                    {regression && <Line data={regressionLineData} dataKey="y" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} type="linear" isAnimationActive={false} activeDot={false} legendType="none" />}
+                    {regression && <Line data={upperBandData} dataKey="y" stroke="hsl(var(--primary))" strokeWidth={1} strokeDasharray="5 3" dot={false} type="linear" isAnimationActive={false} activeDot={false} legendType="none" opacity={0.4} />}
+                    {regression && <Line data={lowerBandData} dataKey="y" stroke="hsl(var(--primary))" strokeWidth={1} strokeDasharray="5 3" dot={false} type="linear" isAnimationActive={false} activeDot={false} legendType="none" opacity={0.4} />}
                     <Scatter data={scatterData} isAnimationActive={false}>
-                      {scatterData.map((p, i) => (
-                        <Cell
-                          key={`cell-${i}`}
-                          fill={p.isOutlier ? 'hsl(var(--destructive))' : 'hsl(var(--primary))'}
-                          fillOpacity={p.isOutlier ? 0.85 : 0.45}
-                          r={p.isOutlier ? 4 : 3}
-                        />
-                      ))}
+                      {scatterData.map((p, i) => (<Cell key={i} fill={p.isOutlier ? '#ef4444' : 'hsl(var(--primary))'} fillOpacity={p.isOutlier ? 0.9 : 0.5} r={p.isOutlier ? 5 : 3.5} />))}
                     </Scatter>
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </FullscreenOverlay>
 
           {/* Side histograms */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -581,31 +769,54 @@ export const CorrelationsTab: React.FC = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto relative">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="border-b bg-muted/30">
-                        <th className="text-right px-4 py-2 font-medium text-muted-foreground">#</th>
-                        <th className="text-right px-4 py-2 font-medium text-muted-foreground">זנב</th>
-                        <th className="text-right px-4 py-2 font-medium text-muted-foreground">שלב</th>
-                        <th className="text-right px-4 py-2 font-medium text-muted-foreground">{xLabel}</th>
-                        <th className="text-right px-4 py-2 font-medium text-muted-foreground">{yLabel}</th>
-                        <th className="text-right px-4 py-2 font-medium text-muted-foreground">סטייה</th>
+                        <th className="text-right px-4 py-2 font-medium text-muted-foreground w-8">#</th>
+                        {outlierColCfg.visibleCols.map(col => (
+                          <th key={col.key}
+                            style={{ textAlign: outlierColCfg.getAlign(col.key) }}
+                            className="px-4 py-2 font-medium text-muted-foreground cursor-pointer hover:bg-muted/50 select-none group">
+                            <span className="flex items-center gap-1 justify-end">
+                              {outlierColCfg.getLabel(col.key, col.label)}
+                              {outlierColCfg.hasChanges(col.key) && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
+                              <button
+                                className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-muted transition-opacity"
+                                onClick={e => { e.stopPropagation(); setOutlierColMenuKey(col.key); setOutlierColMenuAnchor(e.currentTarget); }}
+                              ><MoreVertical className="h-3 w-3" /></button>
+                            </span>
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y">
                       {outlierPoints.map((p, i) => (
-                        <tr key={i} className="hover:bg-red-50/30 dark:hover:bg-red-900/10">
+                        <tr key={i}
+                          onClick={() => setOutlierRow(prev => prev === i ? null : i)}
+                          className={`cursor-pointer transition-colors ${outlierRow === i ? 'bg-primary/10 ring-1 ring-inset ring-primary/30' : 'hover:bg-red-50/30 dark:hover:bg-red-900/10'}`}>
                           <td className="px-4 py-2 text-muted-foreground">{i + 1}</td>
-                          <td className="px-4 py-2 font-mono">{p.tail_number}</td>
-                          <td className="px-4 py-2">{p.phase}</td>
-                          <td className="px-4 py-2 tabular-nums">{p.x.toFixed(3)}</td>
-                          <td className="px-4 py-2 tabular-nums">{p.y.toFixed(3)}</td>
-                          <td className="px-4 py-2 tabular-nums text-red-500 font-medium">{p.residual.toFixed(3)}</td>
+                          {!outlierColCfg.isHidden('tail') && <td style={{ textAlign: outlierColCfg.getAlign('tail') }} className="px-4 py-2 font-mono">{p.tail_number}</td>}
+                          {!outlierColCfg.isHidden('phase') && <td style={{ textAlign: outlierColCfg.getAlign('phase') }} className="px-4 py-2">{p.phase}</td>}
+                          {!outlierColCfg.isHidden('x') && <td style={{ textAlign: outlierColCfg.getAlign('x') }} className="px-4 py-2 tabular-nums">{p.x.toFixed(3)}</td>}
+                          {!outlierColCfg.isHidden('y') && <td style={{ textAlign: outlierColCfg.getAlign('y') }} className="px-4 py-2 tabular-nums">{p.y.toFixed(3)}</td>}
+                          {!outlierColCfg.isHidden('residual') && <td style={{ textAlign: outlierColCfg.getAlign('residual') }} className="px-4 py-2 tabular-nums text-red-500 font-medium">{p.residual.toFixed(3)}</td>}
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                  {/* Outlier column context menu */}
+                  {outlierColMenuKey && (
+                    <ColumnContextMenu
+                      colKey={outlierColMenuKey}
+                      defaultLabel={outlierColDefs.find(c => c.key === outlierColMenuKey)?.label ?? outlierColMenuKey}
+                      config={outlierColCfg.configs[outlierColMenuKey] ?? {}}
+                      onUpdate={u => outlierColCfg.updateColumn(outlierColMenuKey, u)}
+                      onReset={() => outlierColCfg.resetColumn(outlierColMenuKey)}
+                      onClose={() => { setOutlierColMenuKey(null); setOutlierColMenuAnchor(null); }}
+                      anchorEl={outlierColMenuAnchor}
+                    />
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -626,5 +837,6 @@ export const CorrelationsTab: React.FC = () => {
         </>
       )}
     </div>
+    </TooltipProvider>
   );
 };

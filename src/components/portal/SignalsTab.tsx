@@ -274,6 +274,66 @@ const PhaseTimeline: React.FC<{
   );
 };
 
+// ── Multi-parameter synchronized crosshair panel ─────────────────
+// Shows all active parameters' values at the hovered timestamp across all stacked charts.
+// Works together with recharts syncId="eagle-signals" which already syncs cursor position.
+const MultiParamHoverPanel: React.FC<{
+  ts: number | null;
+  chartData: any[];
+  parameters: string[];
+}> = ({ ts, chartData, parameters }) => {
+  const point = useMemo(() => {
+    if (ts === null || chartData.length === 0) return null;
+    let best = chartData[0], bestDiff = Math.abs(chartData[0].timestamp - ts);
+    for (const d of chartData) {
+      const diff = Math.abs(d.timestamp - ts);
+      if (diff < bestDiff) { bestDiff = diff; best = d; }
+    }
+    return best;
+  }, [ts, chartData]);
+
+  if (!point) return (
+    <div className="rounded-lg border border-border/40 bg-muted/20 px-3 py-2 text-xs text-muted-foreground/50 flex items-center gap-2" dir="rtl">
+      <span className="font-mono text-[10px]">— —:—:—</span>
+      <span>העבר עכבר מעל גרף לסקירת כל הפרמטרים</span>
+    </div>
+  );
+
+  return (
+    <div className="rounded-lg border border-primary/20 bg-card/90 backdrop-blur px-3 py-2 flex flex-wrap gap-3 text-xs shadow-sm" dir="rtl">
+      <span className="font-mono text-muted-foreground text-[10px] flex-shrink-0 self-center">
+        {new Date(point.timestamp).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+      </span>
+      <div className="w-px bg-border/60 self-stretch flex-shrink-0" />
+      {parameters.map((param, idx) => {
+        const info  = PARAMETER_THRESHOLDS[param];
+        const color = getParamColor(param, idx);
+        const value = point[param];
+        if (value == null || !isFinite(value)) return null;
+        const overLimit = info?.max !== undefined && value > info.max;
+        const overWarn  = !overLimit && info?.warningMax !== undefined && value > info.warningMax;
+        const underMin  = !overLimit && info?.min !== undefined && value < info.min;
+        const status    = overLimit || underMin ? 'breach' : overWarn ? 'warn' : 'ok';
+        return (
+          <div key={param} className="flex items-center gap-1.5 flex-shrink-0">
+            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+            <span className="text-muted-foreground text-[10px]">{info?.labelHe ?? param}:</span>
+            <span
+              className={`font-mono font-bold text-[11px] ${status === 'breach' ? 'text-red-400' : status === 'warn' ? 'text-amber-400' : ''}`}
+              style={status === 'ok' ? { color } : {}}
+            >
+              {Number(value).toFixed(2)}
+              {info?.unit ? <span className="font-normal text-[9px] text-muted-foreground ml-0.5">{info.unit}</span> : null}
+            </span>
+            {status === 'breach' && <span className="text-[9px] text-red-400 font-medium">חריגה</span>}
+            {status === 'warn'   && <span className="text-[9px] text-amber-400">⚠</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 // ── Annotation type ───────────────────────────────────────────────
 export interface ChartAnnotation {
   id: string;
@@ -315,11 +375,12 @@ interface SubchartProps {
   annotations?: ChartAnnotation[];
   showMovingAvg?: boolean;
   onChartClick?: (timestamp: number) => void;
+  onHover?: (ts: number | null) => void;
 }
 
 export const ParameterSubchart = memo(({
   param, paramIdx, data, phaseBands, showPhaseBands, isLast, onBrushChange, formatTimestamp,
-  annotations = [], showMovingAvg = false, onChartClick,
+  annotations = [], showMovingAvg = false, onChartClick, onHover,
 }: SubchartProps) => {
   const info  = PARAMETER_THRESHOLDS[param];
   const color = getParamColor(param, paramIdx);
@@ -464,6 +525,8 @@ export const ParameterSubchart = memo(({
           margin={{ top: 4, right: 10, bottom: isLast ? 28 : 4, left: 4 }}
           onClick={onChartClick ? handleChartClick : undefined}
           style={onChartClick ? { cursor: 'crosshair' } : undefined}
+          onMouseMove={(e: any) => { if (onHover && e?.activeLabel != null) onHover(e.activeLabel as number); }}
+          onMouseLeave={() => onHover?.(null)}
         >
           {/* ── Threshold shading bands ── */}
           {/* Warning zone: from warningMax to max (amber fill) */}
@@ -622,6 +685,8 @@ export const SignalsTab: React.FC = memo(() => {
   const [pendingAnnotation, setPendingAnnotation]   = useState<{ timestamp: number } | null>(null);
   const [annotationDraft, setAnnotationDraft]       = useState('');
   const [annotationDraftType, setAnnotationDraftType] = useState<ChartAnnotation['type']>('note');
+  const [hoverTs, setHoverTs]                        = useState<number | null>(null);
+  const handleChartHover = useCallback((ts: number | null) => setHoverTs(ts), []);
 
   useEffect(() => {
     setSelectedParameters(prev => {
@@ -807,6 +872,21 @@ export const SignalsTab: React.FC = memo(() => {
               </option>
             ))}
           </select>
+
+          {/* Phase filter dropdown — shows all phases present in data */}
+          {uniquePhases.length > 1 && (
+            <select
+              value={focusedPhase ?? ''}
+              onChange={e => setFocusedPhase(e.target.value || null)}
+              className="h-8 rounded-md border border-input bg-background px-2.5 text-sm"
+              title="סנן לפי שלב טיסה"
+            >
+              <option value="">כל השלבים ({uniquePhases.length})</option>
+              {uniquePhases.map(p => (
+                <option key={p} value={p}>{PHASE_LABELS_HE[p] ?? p}</option>
+              ))}
+            </select>
+          )}
 
           <Tooltip>
             <TooltipTrigger>
@@ -1009,32 +1089,40 @@ export const SignalsTab: React.FC = memo(() => {
         <div className="grid grid-cols-12 gap-4 items-start">
           {/* Charts + StatsBar column */}
           <div className="col-span-9 space-y-2">
+            {/* Synchronized crosshair tooltip — shows ALL parameters at hovered timestamp */}
+            {selectedParameters.length > 0 && (
+              <MultiParamHoverPanel
+                ts={hoverTs}
+                chartData={chartData}
+                parameters={selectedParameters}
+              />
+            )}
             {selectedParameters.length === 0 ? (
               <div className="flex items-center justify-center h-48 text-muted-foreground text-sm border rounded-lg">
                 בחר פרמטרים להצגה
               </div>
             ) : (
-              selectedParameters.map((param, idx) => (
-                <ParameterSubchart
-                  key={param} param={param} paramIdx={idx}
-                  data={focusedPhase
-                    ? chartData.filter(d => {
-                        const band = phaseBands.find(b => b.phase === focusedPhase);
-                        return band ? d.timestamp >= band.start && d.timestamp <= band.end : true;
-                      })
-                    : chartData}
-                  phaseBands={focusedPhase
-                    ? phaseBands.filter(b => b.phase === focusedPhase)
-                    : phaseBands}
-                  showPhaseBands={showPhaseBands}
-                  isLast={idx === selectedParameters.length - 1}
-                  onBrushChange={idx === selectedParameters.length - 1 ? handleBrushChange : undefined}
-                  formatTimestamp={formatTimestamp}
-                  annotations={annotations}
-                  showMovingAvg={showMovingAvg}
-                  onChartClick={annotationMode ? handleChartClick : undefined}
-                />
-              ))
+              selectedParameters.map((param, idx) => {
+                const focusBands = focusedPhase ? phaseBands.filter(b => b.phase === focusedPhase) : [];
+                const filteredData = focusBands.length > 0
+                  ? chartData.filter(d => focusBands.some(b => d.timestamp >= b.start && d.timestamp <= b.end))
+                  : chartData;
+                return (
+                  <ParameterSubchart
+                    key={param} param={param} paramIdx={idx}
+                    data={filteredData}
+                    phaseBands={focusedPhase ? phaseBands.filter(b => b.phase === focusedPhase) : phaseBands}
+                    showPhaseBands={showPhaseBands}
+                    isLast={idx === selectedParameters.length - 1}
+                    onBrushChange={idx === selectedParameters.length - 1 ? handleBrushChange : undefined}
+                    formatTimestamp={formatTimestamp}
+                    annotations={annotations}
+                    showMovingAvg={showMovingAvg}
+                    onChartClick={annotationMode ? handleChartClick : undefined}
+                    onHover={handleChartHover}
+                  />
+                );
+              })
             )}
             {/* StatsBar directly below charts — visually unified with the chart column */}
             <StatsBar data={chartData} parameters={selectedParameters} />

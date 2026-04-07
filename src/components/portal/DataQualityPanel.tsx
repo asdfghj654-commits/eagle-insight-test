@@ -14,15 +14,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
-import {
   CheckCircle2,
   AlertTriangle,
   XCircle,
-  ChevronDown,
   Database,
   Shield,
 } from 'lucide-react';
@@ -130,29 +124,24 @@ export const DataQualityPanel: React.FC = () => {
           </span>
         </div>
 
-        {/* Present parameters */}
+        {/* Present parameters — flat list, no collapsible */}
         {present.length > 0 && (
-          <Collapsible>
-            <CollapsibleTrigger className="flex items-center justify-between w-full text-xs font-medium">
-              <span className="flex items-center gap-1 text-green-700">
-                <CheckCircle2 className="h-3 w-3" />
-                זמינים ({present.length})
-              </span>
-              <ChevronDown className="h-3 w-3 text-muted-foreground" />
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <div className="mt-2 space-y-1">
-                {present.map(p => (
-                  <div key={p.name} className="flex items-center justify-between text-xs py-0.5">
-                    <span className="text-muted-foreground">{p.nameHe}</span>
-                    <Badge variant="outline" className="text-xs text-green-700 border-green-300">
-                      {p.systemHe}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
+          <div>
+            <p className="text-xs font-medium flex items-center gap-1 text-green-700 mb-1.5">
+              <CheckCircle2 className="h-3 w-3" />
+              זמינים ({present.length})
+            </p>
+            <div className="space-y-1">
+              {present.map(p => (
+                <div key={p.name} className="flex items-center justify-between text-xs py-0.5">
+                  <span className="text-muted-foreground">{p.nameHe}</span>
+                  <Badge variant="outline" className="text-xs text-green-700 border-green-300">
+                    {p.systemHe}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
 
         {/* Missing parameters */}

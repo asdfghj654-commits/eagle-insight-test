@@ -1,4 +1,5 @@
-// Events Tab — rule violations and anomalies with working filters
+// Events Tab — rule violations and anomalies with working filters + sortable columns + anomaly panel
+// UX pattern: outlier-first design, top anomaly callout, sortable dense table
 import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +13,7 @@ import {
 } from '@/components/ui/table';
 import {
   AlertTriangle, AlertCircle, Info, Clock, Filter, ExternalLink, X,
+  ArrowUpDown, ArrowUp, ArrowDown, Flame,
 } from 'lucide-react';
 import { useDashboardData } from '@/hooks/useDashboardData';
 import { DataAdapter } from '@/lib/data-adapter';
@@ -48,13 +50,30 @@ const getSeverityBadgeClass = (severity: string) => {
   }
 };
 
+type SortColumn = 'severity' | 'time' | 'tail' | 'system' | 'title';
+type SortDir    = 'asc' | 'desc';
+
 export const EventsTab: React.FC<EventsTabProps> = ({ onJumpToTime }) => {
   const { insights, hasData } = useDashboardData();
 
   const [searchTerm,     setSearchTerm]     = useState('');
-  const [severityFilter, setSeverityFilter] = useState('');   // '' = all
+  const [severityFilter, setSeverityFilter] = useState('');
   const [systemFilter,   setSystemFilter]   = useState('');
   const [typeFilter,     setTypeFilter]     = useState('');
+  const [sortColumn,     setSortColumn]     = useState<SortColumn>('severity');
+  const [sortDir,        setSortDir]        = useState<SortDir>('asc');
+
+  const handleSort = (col: SortColumn) => {
+    if (sortColumn === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortColumn(col); setSortDir('asc'); }
+  };
+
+  const SortIcon: React.FC<{ col: SortColumn }> = ({ col }) => {
+    if (sortColumn !== col) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-40" />;
+    return sortDir === 'asc'
+      ? <ArrowUp   className="h-3 w-3 ml-1 text-primary" />
+      : <ArrowDown className="h-3 w-3 ml-1 text-primary" />;
+  };
 
   // Derived filter options — only include values that actually exist in data
   const { systems, types } = useMemo(() => {
@@ -89,11 +108,18 @@ export const EventsTab: React.FC<EventsTabProps> = ({ onJumpToTime }) => {
     if (systemFilter)   result = result.filter(i => i.system   === systemFilter);
     if (typeFilter)     result = result.filter(i => i.type     === typeFilter);
 
-    // Sort: critical first
-    return [...result].sort((a, b) =>
-      SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity)
-    );
-  }, [insights, searchTerm, severityFilter, systemFilter, typeFilter]);
+    return [...result].sort((a, b) => {
+      let cmp = 0;
+      switch (sortColumn) {
+        case 'severity': cmp = SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity); break;
+        case 'time':     cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime(); break;
+        case 'tail':     cmp = (a.tail ?? '').localeCompare(b.tail ?? ''); break;
+        case 'system':   cmp = (a.system ?? '').localeCompare(b.system ?? ''); break;
+        case 'title':    cmp = (a.title ?? '').localeCompare(b.title ?? ''); break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [insights, searchTerm, severityFilter, systemFilter, typeFilter, sortColumn, sortDir]);
 
   const stats = useMemo(() => ({
     total:    filtered.length,
@@ -138,6 +164,44 @@ export const EventsTab: React.FC<EventsTabProps> = ({ onJumpToTime }) => {
           </Card>
         ))}
       </div>
+
+      {/* ── Top anomalies callout ── */}
+      {stats.critical > 0 && (
+        <Card className="border-red-200 bg-red-50/20 dark:bg-red-900/10 dark:border-red-800/40">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2 text-red-600 dark:text-red-400">
+              <Flame className="h-4 w-4" />
+              אירועים קריטיים דורשים תשומת לב מיידית
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y divide-red-100 dark:divide-red-900/30">
+              {filtered.filter(i => i.severity === 'critical').slice(0, 3).map(insight => (
+                <div key={insight.insight_id} className="flex items-center gap-3 px-4 py-2.5">
+                  <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0" />
+                  <div className="flex-1 min-w-0 text-right">
+                    <div className="text-sm font-medium truncate">{insight.title}</div>
+                    <div className="text-[11px] text-muted-foreground">{insight.tail} · {insight.system}</div>
+                  </div>
+                  <Button
+                    variant="ghost" size="sm"
+                    onClick={() => handleJumpToTime(insight)}
+                    className="h-7 text-xs gap-1 flex-shrink-0 text-red-600 hover:text-red-700"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    קפץ
+                  </Button>
+                </div>
+              ))}
+              {stats.critical > 3 && (
+                <div className="px-4 py-2 text-xs text-muted-foreground text-right">
+                  ועוד {stats.critical - 3} אירועים קריטיים נוספים...
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Filters ── */}
       <Card>
@@ -293,12 +357,22 @@ export const EventsTab: React.FC<EventsTabProps> = ({ onJumpToTime }) => {
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead className="text-right w-8">חומרה</TableHead>
-                  <TableHead className="text-right">זמן</TableHead>
-                  <TableHead className="text-right">זנב</TableHead>
-                  <TableHead className="text-right">מערכת</TableHead>
-                  <TableHead className="text-right">כותרת</TableHead>
+                <TableRow className="bg-muted/30">
+                  <TableHead className="text-right w-32 cursor-pointer hover:bg-muted/60 select-none" onClick={() => handleSort('severity')}>
+                    <span className="flex items-center justify-end">חומרה <SortIcon col="severity" /></span>
+                  </TableHead>
+                  <TableHead className="text-right cursor-pointer hover:bg-muted/60 select-none" onClick={() => handleSort('time')}>
+                    <span className="flex items-center justify-end">זמן <SortIcon col="time" /></span>
+                  </TableHead>
+                  <TableHead className="text-right cursor-pointer hover:bg-muted/60 select-none" onClick={() => handleSort('tail')}>
+                    <span className="flex items-center justify-end">זנב <SortIcon col="tail" /></span>
+                  </TableHead>
+                  <TableHead className="text-right cursor-pointer hover:bg-muted/60 select-none" onClick={() => handleSort('system')}>
+                    <span className="flex items-center justify-end">מערכת <SortIcon col="system" /></span>
+                  </TableHead>
+                  <TableHead className="text-right cursor-pointer hover:bg-muted/60 select-none" onClick={() => handleSort('title')}>
+                    <span className="flex items-center justify-end">כותרת <SortIcon col="title" /></span>
+                  </TableHead>
                   <TableHead className="text-right hidden md:table-cell">תיאור</TableHead>
                   <TableHead className="text-right hidden lg:table-cell">פרטים טכניים</TableHead>
                   <TableHead className="w-20" />

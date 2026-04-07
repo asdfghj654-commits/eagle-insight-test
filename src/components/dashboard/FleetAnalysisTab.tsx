@@ -7,37 +7,77 @@
  * Terminology: Uses "כשירות מטוסים" (Aircraft Readiness), NOT "צי" (Fleet).
  */
 
+// Fleet Analysis Tab — aircraft readiness with ranked tables, progress bars, top/bottom patterns
+// UX pattern: pinned identity column, progress-style alert counts, top-critical callout
 import { useState, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { BarChart3, LineChart, TrendingUp, Plane, Database, Info } from "lucide-react";
+import { BarChart3, Plane, Database, Info, AlertTriangle, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { BarChart, Bar, LineChart as RechartsLineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useDashboardData } from "@/hooks/useDashboardData";
 import { useCSVData } from "@/contexts/CSVDataContext";
+
+type AircraftSortCol = 'tail' | 'status' | 'flights' | 'alerts' | 'critical';
+type SortDir = 'asc' | 'desc';
 
 export const FleetAnalysisTab = () => {
   const { hasData, getAircraftStatus, dashboardStats, insights } = useDashboardData();
   const { processedFlights } = useCSVData();
   const [selectedAircraft, setSelectedAircraft] = useState<string | null>(null);
+  const [sortCol, setSortCol] = useState<AircraftSortCol>('critical');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+
+  const handleSort = (col: AircraftSortCol) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortCol(col); setSortDir('desc'); }
+  };
+
+  const SortIcon = ({ col }: { col: AircraftSortCol }) => {
+    if (sortCol !== col) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-40 inline" />;
+    return sortDir === 'asc'
+      ? <ArrowUp   className="h-3 w-3 ml-1 text-primary inline" />
+      : <ArrowDown className="h-3 w-3 ml-1 text-primary inline" />;
+  };
 
   // Derive aircraft data from real CSV data
   const aircraftData = useMemo(() => {
     if (!hasData) return [];
-    
     const status = getAircraftStatus();
     return status.map(aircraft => ({
       tail: aircraft.tail,
-      status: aircraft.status === 'critical' ? 'grounded' : 
+      status: aircraft.status === 'critical' ? 'grounded' :
               aircraft.status === 'maintenance' ? 'maintenance' : 'operational',
-      alertCount: aircraft.alertCount,
+      alertCount:    aircraft.alertCount,
       criticalAlerts: aircraft.criticalAlerts,
-      lastFlight: aircraft.lastFlight || null,
-      // Count flights per aircraft
-      flightCount: processedFlights.filter(f => f.tail_number === aircraft.tail).length
+      lastFlight:    aircraft.lastFlight || null,
+      flightCount:   processedFlights.filter(f => f.tail_number === aircraft.tail).length,
     }));
   }, [hasData, getAircraftStatus, processedFlights]);
+
+  const maxAlerts   = useMemo(() => Math.max(1, ...aircraftData.map(a => a.alertCount)),   [aircraftData]);
+  const maxCritical = useMemo(() => Math.max(1, ...aircraftData.map(a => a.criticalAlerts)), [aircraftData]);
+
+  const sortedAircraftData = useMemo(() => {
+    return [...aircraftData].sort((a, b) => {
+      let cmp = 0;
+      const statusOrder = { grounded: 0, maintenance: 1, operational: 2 };
+      switch (sortCol) {
+        case 'tail':     cmp = a.tail.localeCompare(b.tail); break;
+        case 'status':   cmp = statusOrder[a.status as keyof typeof statusOrder] - statusOrder[b.status as keyof typeof statusOrder]; break;
+        case 'flights':  cmp = a.flightCount - b.flightCount; break;
+        case 'alerts':   cmp = a.alertCount - b.alertCount; break;
+        case 'critical': cmp = a.criticalAlerts - b.criticalAlerts; break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [aircraftData, sortCol, sortDir]);
+
+  const topCritical = useMemo(() =>
+    [...aircraftData].sort((a, b) => b.criticalAlerts - a.criticalAlerts).filter(a => a.criticalAlerts > 0).slice(0, 3),
+    [aircraftData],
+  );
 
   // Derive fault history from insights
   const faultHistory = useMemo(() => {
@@ -169,47 +209,113 @@ export const FleetAnalysisTab = () => {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="list" className="mt-4">
+        <TabsContent value="list" className="mt-4 space-y-4">
+          {/* Top critical callout */}
+          {topCritical.length > 0 && (
+            <Card className="border-red-200 bg-red-50/20 dark:bg-red-900/10 dark:border-red-800/40">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2 text-red-600 dark:text-red-400">
+                  <AlertTriangle className="h-4 w-4" />
+                  מטוסים עם ממצאים קריטיים
+                </CardTitle>
+                <CardDescription className="text-xs">דורשים טיפול מיידי</CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="divide-y divide-red-100 dark:divide-red-900/30">
+                  {topCritical.map((a, i) => (
+                    <div key={a.tail} className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-red-50/30"
+                      onClick={() => setSelectedAircraft(a.tail)}>
+                      <span className="text-xs font-bold text-red-400 w-4">#{i + 1}</span>
+                      <span className="font-mono text-sm font-semibold flex-1">{a.tail}</span>
+                      <Badge variant="destructive" className="text-xs">{a.criticalAlerts} קריטי</Badge>
+                      <Badge variant="outline" className="text-xs">{a.alertCount} סה"כ</Badge>
+                      <Badge className={`text-xs ${getStatusColor(a.status)}`}>{getStatusLabel(a.status)}</Badge>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Main aircraft table */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                רשימת מטוסים
-                <Badge variant="outline" className="text-xs">
-                  {aircraftData.length} מטוסים
-                </Badge>
-              </CardTitle>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  כל המטוסים
+                  <Badge variant="outline" className="text-xs">{aircraftData.length}</Badge>
+                </CardTitle>
+                <CardDescription className="text-xs">לחץ על עמודה למיון · לחץ על שורה לפרטים</CardDescription>
+              </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-0">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-right">מספר זנב</TableHead>
-                    <TableHead className="text-right">סטטוס</TableHead>
-                    <TableHead className="text-right">טיסות</TableHead>
-                    <TableHead className="text-right">התרעות</TableHead>
-                    <TableHead className="text-right">קריטיות</TableHead>
+                  <TableRow className="bg-muted/30">
+                    <TableHead className="text-right w-8 text-muted-foreground">#</TableHead>
+                    <TableHead className="text-right cursor-pointer hover:bg-muted/60 select-none" onClick={() => handleSort('tail')}>
+                      <span className="flex items-center justify-end">זנב <SortIcon col="tail" /></span>
+                    </TableHead>
+                    <TableHead className="text-right cursor-pointer hover:bg-muted/60 select-none" onClick={() => handleSort('status')}>
+                      <span className="flex items-center justify-end">סטטוס <SortIcon col="status" /></span>
+                    </TableHead>
+                    <TableHead className="text-right cursor-pointer hover:bg-muted/60 select-none" onClick={() => handleSort('flights')}>
+                      <span className="flex items-center justify-end">טיסות <SortIcon col="flights" /></span>
+                    </TableHead>
+                    <TableHead className="text-right cursor-pointer hover:bg-muted/60 select-none w-40" onClick={() => handleSort('alerts')}>
+                      <span className="flex items-center justify-end">התרעות <SortIcon col="alerts" /></span>
+                    </TableHead>
+                    <TableHead className="text-right cursor-pointer hover:bg-muted/60 select-none w-36" onClick={() => handleSort('critical')}>
+                      <span className="flex items-center justify-end">קריטיות <SortIcon col="critical" /></span>
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {aircraftData.map((aircraft) => (
-                    <TableRow 
+                  {sortedAircraftData.map((aircraft, idx) => (
+                    <TableRow
                       key={aircraft.tail}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => setSelectedAircraft(aircraft.tail)}
+                      className={`cursor-pointer hover:bg-muted/40 ${selectedAircraft === aircraft.tail ? 'bg-muted/60 border-r-2 border-r-primary' : ''}`}
+                      onClick={() => setSelectedAircraft(aircraft.tail === selectedAircraft ? null : aircraft.tail)}
                     >
-                      <TableCell className="font-medium">{aircraft.tail}</TableCell>
+                      <TableCell className="text-muted-foreground text-xs">{idx + 1}</TableCell>
                       <TableCell>
-                        <Badge className={getStatusColor(aircraft.status)}>
+                        <div className="flex items-center gap-2">
+                          {aircraft.criticalAlerts > 0
+                            ? <AlertTriangle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+                            : <CheckCircle2 className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />}
+                          <span className="font-mono font-semibold text-sm">{aircraft.tail}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={`text-xs ${getStatusColor(aircraft.status)}`}>
                           {getStatusLabel(aircraft.status)}
                         </Badge>
                       </TableCell>
-                      <TableCell>{aircraft.flightCount}</TableCell>
-                      <TableCell>{aircraft.alertCount}</TableCell>
+                      <TableCell className="tabular-nums text-sm">{aircraft.flightCount}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span className="tabular-nums text-sm w-6 text-right">{aircraft.alertCount}</span>
+                          <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-orange-400 transition-all"
+                              style={{ width: `${(aircraft.alertCount / maxAlerts) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                      </TableCell>
                       <TableCell>
                         {aircraft.criticalAlerts > 0 ? (
-                          <Badge variant="destructive">{aircraft.criticalAlerts}</Badge>
+                          <div className="flex items-center gap-2">
+                            <span className="tabular-nums text-sm w-6 text-right text-red-500 font-medium">{aircraft.criticalAlerts}</span>
+                            <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-red-500 transition-all"
+                                style={{ width: `${(aircraft.criticalAlerts / maxCritical) * 100}%` }}
+                              />
+                            </div>
+                          </div>
                         ) : (
-                          <span className="text-muted-foreground">-</span>
+                          <span className="text-muted-foreground text-sm">—</span>
                         )}
                       </TableCell>
                     </TableRow>

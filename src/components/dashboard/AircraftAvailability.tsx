@@ -12,15 +12,19 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plane, CheckCircle2, AlertTriangle, Wrench, Calendar, Loader2, Database } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Plane, CheckCircle2, AlertTriangle, Wrench, Calendar, Loader2, Database, ChevronDown, ChevronUp } from "lucide-react";
 import { useDashboardData } from "@/hooks/useDashboardData";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useRuleAuthority } from "@/hooks/useRuleAuthority";
+
+const PAGE_SIZE = 6;
 
 export const AircraftAvailability = () => {
   const { getAircraftStatus, hasData, isGeneratingInsights, dashboardStats } = useDashboardData();
   const { isStatusAuthorized, sanitizeStatus } = useRuleAuthority();
+  const [expanded, setExpanded] = useState(false);
   
   // Build aircraft data ONLY from real data - NO FALLBACK
   const aircraftFleet = useMemo(() => {
@@ -158,54 +162,50 @@ export const AircraftAvailability = () => {
         </div>
 
         {/* Aircraft List */}
-        <div className="space-y-3">
+        <div className="space-y-2">
           {isGeneratingInsights ? (
             <div className="flex items-center justify-center py-4">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               <span className="mr-2 text-sm text-muted-foreground">מעבד נתוני מטוסים...</span>
             </div>
           ) : (
-            aircraftFleet.map((aircraft) => (
-              <div key={aircraft.tailNumber} className="border rounded-lg p-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    {getStatusIcon(aircraft.status)}
-                    <div>
-                      <h3 className="font-semibold">מטוס {aircraft.tailNumber}</h3>
-                      <p className="text-sm text-muted-foreground">{aircraft.block}</p>
+            <>
+              {(expanded ? aircraftFleet : aircraftFleet.slice(0, PAGE_SIZE)).map((aircraft) => (
+                <div key={aircraft.tailNumber} className="border rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {getStatusIcon(aircraft.status)}
+                      <div>
+                        <h3 className="font-semibold text-sm">מטוס {aircraft.tailNumber}</h3>
+                        <p className="text-xs text-muted-foreground">{aircraft.block} · {aircraft.location}</p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {aircraft.alertCount > 0 && (
-                      <Badge variant={aircraft.criticalAlerts > 0 ? "destructive" : "secondary"} className="text-xs">
-                        {aircraft.alertCount} התרעות
-                      </Badge>
-                    )}
-                    {getStatusBadge(aircraft.status)}
-                  </div>
-                </div>
-                
-                <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">מיקום:</span>
-                    <div className="font-medium">{aircraft.location}</div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">שעות טיסה:</span>
-                    <div className="font-medium">
-                      {aircraft.flightHours ? aircraft.flightHours.toLocaleString() : 'לא זמין'}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Calendar className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-muted-foreground">תחזוקה הבאה:</span>
-                    <div className="font-medium text-xs">
-                      {aircraft.nextMaintenance || 'לא מתוכננת'}
+                    <div className="flex items-center gap-2">
+                      {aircraft.alertCount > 0 && (
+                        <Badge variant={aircraft.criticalAlerts > 0 ? "destructive" : "secondary"} className="text-xs">
+                          {aircraft.alertCount} התרעות
+                        </Badge>
+                      )}
+                      {getStatusBadge(aircraft.status)}
                     </div>
                   </div>
                 </div>
-              </div>
-            ))
+              ))}
+              {aircraftFleet.length > PAGE_SIZE && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs text-muted-foreground gap-1"
+                  onClick={() => setExpanded(e => !e)}
+                >
+                  {expanded ? (
+                    <><ChevronUp className="h-3 w-3" />הצג פחות</>
+                  ) : (
+                    <><ChevronDown className="h-3 w-3" />הצג עוד {aircraftFleet.length - PAGE_SIZE} מטוסים</>
+                  )}
+                </Button>
+              )}
+            </>
           )}
         </div>
         

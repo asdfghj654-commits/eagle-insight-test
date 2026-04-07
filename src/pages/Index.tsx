@@ -21,7 +21,7 @@ import { DailyMaintenanceWorkload } from "@/components/dashboard/DailyMaintenanc
 import { SquadronStatusCard } from "@/components/dashboard/SquadronStatusCard";
 import { CommanderRecommendations } from "@/components/dashboard/CommanderRecommendations";
 import { OpenInvestigations } from "@/components/dashboard/OpenInvestigations";
-import { Settings } from "lucide-react";
+import { Settings, CheckSquare } from "lucide-react";
 import { FlightTechniqueAnalysis } from "@/components/dashboard/FlightTechniqueAnalysis";
 import { InsightCard } from "@/components/dashboard/InsightCard";
 import { SquadronTrends } from "@/components/dashboard/SquadronTrends";
@@ -31,23 +31,26 @@ import { AircraftAvailability } from "@/components/dashboard/AircraftAvailabilit
 import { AIPredictions } from "@/components/dashboard/AIPredictions";
 import { TechnicianMaintenanceView } from "@/components/dashboard/TechnicianMaintenanceView";
 import { FleetAnalysisTab } from "@/components/dashboard/FleetAnalysisTab";
-import { EmptyState } from "@/components/ui/empty-state";
+import { AiPanel } from "@/components/ai/AiPanel";
 
 const DashboardHeader = () => {
   const { currentUser } = useRole();
-  
+
   return (
     <header className="border-b bg-card">
       <div className="px-6 py-4">
         <div className="flex items-center justify-between" dir="rtl">
+          {/* Left Section - Logos & System Title */}
           <div className="flex items-center gap-6 justify-start">
             <div className="flex items-center gap-4">
+              {/* Israeli Air Force Logo - closest to left edge */}
               <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-blue-800 rounded-lg flex items-center justify-center shadow-lg">
                 <div className="text-white text-center">
                   <div className="text-lg font-bold">✈</div>
                   <div className="text-xs">IAF</div>
                 </div>
               </div>
+              {/* Equipment Squadron Logo */}
               <div className="w-14 h-14 bg-gradient-to-br from-green-600 to-green-800 rounded-lg flex items-center justify-center shadow-lg">
                 <div className="text-white text-center">
                   <div className="text-lg font-bold">⚙</div>
@@ -58,12 +61,13 @@ const DashboardHeader = () => {
             <div className="flex items-center gap-3">
               <Plane className="h-8 w-8 text-primary" />
               <div className="text-right">
-                <h1 className="text-2xl font-bold text-right">מערכת תובנות מערכת F-16</h1>
-                <p className="text-sm text-muted-foreground text-right">ניתוח נתוני קופסה שחורה ותובנות מערכת</p>
+                <h1 className="text-2xl font-bold text-right">מערכת תובנות אחזקה F-16</h1>
+                <p className="text-sm text-muted-foreground text-right">ניתוח נתוני קופסה שחורה ותובנות אחזקה</p>
               </div>
             </div>
           </div>
-          
+
+          {/* Right Section - User & Time */}
           <div className="flex items-center gap-4 justify-end">
             <div className="text-right">
               <p className="text-sm font-medium">שלום {currentUser.name} ({currentUser.id})</p>
@@ -92,12 +96,14 @@ const DashboardContent = () => {
   const { currentUser } = useRole();
   const navigate = useNavigate();
   const { insights, dashboardStats, hasData } = useDashboardData();
-  
+
   return (
     <div className="min-h-screen bg-background">
       <DashboardHeader />
 
+      {/* Main Dashboard */}
       <main className="container mx-auto px-4 py-6 space-y-6 font-plex" dir="rtl">
+        {/* Portal Access */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -109,58 +115,63 @@ const DashboardContent = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {currentUser.role === 'engineer' ? (
-              <>
-                <div className="flex gap-4 flex-row-reverse">
-                  <Button 
-                    onClick={() => navigate('/portal/data-research')}
-                    className="flex items-center gap-2 flex-row-reverse"
-                  >
-                    <Settings className="h-4 w-4" />
-                    כניסה לפורטל ההנדסי
-                  </Button>
-                </div>
-                <CSVUpload
-                  navigateToAfterUpload="/portal/data-research"
-                  onUploadComplete={() => {
-                    console.log('CSV uploaded - dashboard will auto-update with real insights');
-                  }}
-                />
-              </>
-            ) : (
-              <div className="text-sm text-muted-foreground text-right">
-                הגישה לפורטל ההנדסי והעלאת נתונים זמינה למהנדס בלבד.
-              </div>
-            )}
+            <div className="flex gap-4 flex-row-reverse">
+              <Button
+                onClick={() => navigate('/portal/magen-achzaka-david')}
+                className="flex items-center gap-2 flex-row-reverse"
+              >
+                <Settings className="h-4 w-4" />
+                כניסה לפורטל ההנדסי
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => navigate('/review')}
+                className="flex items-center gap-2 flex-row-reverse"
+              >
+                <CheckSquare className="h-4 w-4" />
+                תור אישורים
+              </Button>
+            </div>
+            <CSVUpload onUploadComplete={() => {
+              console.log('CSV uploaded - dashboard will auto-update with real insights');
+            }} />
           </CardContent>
         </Card>
 
+        {/* Role Selector for Demo */}
         <RoleSelector />
+
+        {/* System Explanation */}
         <SystemExplanation />
-        
+
+        {/* Role-based Dashboard */}
         {currentUser.role === 'technician' ? (
           <TechnicianMaintenanceView />
         ) : (
           <div className="space-y-6">
+            {/* Top Row - Key Metrics */}
             <div className="grid gap-6 lg:grid-cols-2">
               <DailyMaintenanceWorkload />
               <SquadronStatusCard />
             </div>
-            
+
+            {/* Aircraft Availability and AI Predictions */}
             <div className="grid gap-6 lg:grid-cols-2">
               <AircraftAvailability />
               <AIPredictions />
             </div>
-            
+
+            {/* Commander Recommendations and Active Rules */}
             <div className="grid gap-6 lg:grid-cols-2">
               <CommanderRecommendations />
               <ActiveRulesCard />
             </div>
-            
+
+            {/* Insights Grid */}
             <div className="space-y-4">
-              <h2 className="text-xl font-bold text-right">תובנות מערכת</h2>
+              <h2 className="text-xl font-bold text-right">תובנות אחזקה</h2>
               <div className="grid gap-4 lg:grid-cols-2">
-                {hasData ? (
+                {hasData ?
                   insights.slice(0, 4).map((insight) => (
                     <InsightCard key={insight.insight_id} insight={{
                       id: insight.insight_id,
@@ -177,38 +188,54 @@ const DashboardContent = () => {
                       system: insight.system,
                       status: insight.status === 'new' ? 'חדש' : insight.status
                     }} />
-                  ))
-                ) : (
-                  <EmptyState
-                    icon={AlertTriangle}
-                    title="אין תובנות להצגה"
-                    description="נדרשת העלאת נתוני טיסה כדי לייצור תובנות."
-                    variant="subtle"
-                  />
-                )}
+                  )) :
+                  <div className="col-span-2 py-8 text-center text-muted-foreground">
+                    <Activity className="h-10 w-10 mx-auto mb-2 opacity-40" />
+                    <p>העלה קובץ CSV לצפייה בתובנות אחזקה</p>
+                  </div>
+                }
               </div>
             </div>
-            
+
+            {/* Investigations and Analysis */}
             <div className="grid gap-6 lg:grid-cols-2">
               <OpenInvestigations />
               <SquadronTrends />
             </div>
-            
+
+            {/* Flight Technique Analysis - Commander Only */}
             <FlightTechniqueAnalysis />
           </div>
         )}
-        
-        {currentUser.role !== 'technician' && (
+
+        {/* AI Assistant — role-scoped */}
+        <AiPanel
+          slot={
+            currentUser.role === 'commander'
+              ? 'fleet_summary'
+              : currentUser.role === 'specialist'
+              ? 'fleet_summary'
+              : 'investigation_assist'
+          }
+          roleScope={
+            currentUser.role === 'technician' ? 'technician'
+            : currentUser.role === 'specialist' ? 'specialist'
+            : currentUser.role === 'commander' ? 'commander'
+            : 'engineer'
+          }
+          defaultOpen={false}
+        />
+
         <Tabs defaultValue="alerts" className="w-full">
           <TabsList className="grid w-full grid-cols-8">
-            <TabsTrigger value="alerts">התראות אחזקה</TabsTrigger>
+            <TabsTrigger value="alerts">התרעות אחזקה</TabsTrigger>
             <TabsTrigger value="active">תיקים מושלמים</TabsTrigger>
             <TabsTrigger value="recommendations">המלצות טכניות</TabsTrigger>
             <TabsTrigger value="rules">ניהול כללים</TabsTrigger>
             <TabsTrigger value="blackbox">נתוני קופסה שחורה</TabsTrigger>
             <TabsTrigger value="history">היסטוריה וניתוח</TabsTrigger>
             <TabsTrigger value="daily">סיכום יומי</TabsTrigger>
-        {currentUser.role === 'commander' && (
+        {(currentUser.role === 'maintenance-chief' || currentUser.role === 'specialist' || currentUser.role === 'engineer') && (
           <TabsTrigger value="fleet">ניתוח צי</TabsTrigger>
         )}
           </TabsList>
@@ -258,7 +285,6 @@ const DashboardContent = () => {
                       <input type="date" className="w-full p-2 border rounded-lg bg-background text-right" />
                     </div>
                   </div>
-                  
                   <div className="bg-card border rounded-lg p-4">
                     <div className="py-8 text-center text-muted-foreground">
                       <Plane className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -327,7 +353,6 @@ const DashboardContent = () => {
                     </div>
                   </CardContent>
                 </Card>
-                
                 <Card>
                    <CardHeader>
                      <CardTitle className="flex items-center gap-2 flex-row-reverse text-right">
@@ -345,7 +370,7 @@ const DashboardContent = () => {
                         </Badge>
                       </div>
                       <div className="flex justify-between items-center p-3 bg-destructive/5 border border-destructive/20 rounded-lg">
-                        <span className="font-medium">מטוסים עם התראות</span>
+                        <span className="font-medium">מטוסים עם התרעות</span>
                         <Badge variant="destructive">{dashboardStats.aircraftWithAlerts}</Badge>
                       </div>
                       <div className="flex justify-between items-center p-3 bg-warning/5 border border-warning/20 rounded-lg">
@@ -360,13 +385,12 @@ const DashboardContent = () => {
           </div>
         </TabsContent>
 
-        {currentUser.role === 'commander' && (
+        {(currentUser.role === 'maintenance-chief' || currentUser.role === 'specialist' || currentUser.role === 'engineer') && (
           <TabsContent value="fleet" className="mt-6">
             <FleetAnalysisTab />
           </TabsContent>
         )}
         </Tabs>
-        )}
       </main>
     </div>
   );

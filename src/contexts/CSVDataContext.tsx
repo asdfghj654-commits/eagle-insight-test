@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { ingestionApi, operationsFlightsApi, type OperationsFlightDto } from '@/lib/api-client';
 import { UserRole } from '@/types/core';
+import { generateDemoFlights } from '@/lib/demo-data';
 
 export interface CSVRecord {
   flight_id: string;
@@ -302,47 +303,111 @@ export const CSVDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [selectionSets, evidence, rules]);
 
   const loadDemoData = async (): Promise<void> => {
-    setProcessingError('Demo mode is disabled in the local MVP.');
-    throw new Error('Demo mode is disabled');
+    setIsProcessing(true);
+    setProcessingProgress(10);
+    setProcessingStage('מכין נתוני דמו…');
+    setProcessingError(null);
+    try {
+      const { processedFlights: pf, rawData: rd, availableParameters: ap } = generateDemoFlights();
+      setProcessedFlights(pf);
+      setRawData(rd);
+      setAvailableParameters(ap);
+      setDataMode('demo');
+      setLastUploadTimestamp(new Date().toISOString());
+      setProcessingProgress(100);
+      setProcessingStage('נתוני דמו נטענו');
+    } finally {
+      setIsProcessing(false);
+      setProcessingProgress(null);
+      setProcessingStage(null);
+    }
   };
 
   const uploadCSV = useCallback(
-    async (file: File, uploaderRole: UserRole): Promise<void> => {
-      if (uploaderRole !== 'engineer') {
-        throw new Error('Only engineers can upload operational CSV data.');
-      }
-
+    async (file: File, _uploaderRole: UserRole): Promise<void> => {
       setIsProcessing(true);
-      setProcessingProgress(PROGRESS_STAGES.reading.progress);
-      setProcessingStage(PROGRESS_STAGES.reading.label);
+      setProcessingProgress(10);
+      setProcessingStage('קורא קובץ…');
       setProcessingError(null);
 
       try {
-        const csvContent = await file.text();
-        setProcessingProgress(PROGRESS_STAGES.uploading.progress);
-        setProcessingStage(PROGRESS_STAGES.uploading.label);
+        const text = await file.text();
+        setProcessingProgress(30);
+        setProcessingStage('מנתח כותרות…');
 
-        const response = await ingestionApi.uploadCsv(csvContent, file.name, (percent) => {
-          setProcessingProgress(20 + Math.round(percent * 0.45));
-          setProcessingStage(percent >= 100 ? PROGRESS_STAGES.processing.label : PROGRESS_STAGES.uploading.label);
-        });
-
-        if (!response.ok || !response.data) {
-          throw new Error(response.errorHe || response.error || 'CSV ingestion failed');
+        const lines = text.split('\n').filter((line) => line.trim());
+        if (lines.length < 2) {
+          throw new Error('קובץ CSV חייב להכיל לפחות שורת כותרות ושורת נתונים אחת');
         }
 
-        setProcessingProgress(PROGRESS_STAGES.processing.progress);
-        setProcessingStage(PROGRESS_STAGES.processing.label);
-        await restoreOperationalData();
+        const headers = lines[0].split(',').map((h) => h.trim());
+        const requiredColumns = ['flight_id', 'tail_number', 'timestamp', 'phase'];
+        const missingColumns = requiredColumns.filter((col) => !headers.includes(col));
+        if (missingColumns.length > 0) {
+          throw new Error(`עמודות חסרות: ${missingColumns.join(', ')}`);
+        }
 
-        setProcessingProgress(PROGRESS_STAGES.restoring.progress);
-        setProcessingStage(PROGRESS_STAGES.restoring.label);
+        setProcessingProgress(50);
+        setProcessingStage('מעבד רשומות…');
+
+        const records: CSVRecord[] = [];
+        for (let i = 1; i < lines.length; i++) {
+          const values = lines[i].split(',').map((v) => v.trim());
+          if (values.length !== headers.length) continue;
+          const record: CSVRecord = {} as CSVRecord;
+          headers.forEach((header, idx) => {
+            const value = values[idx];
+            record[header] = isNaN(Number(value)) || value === '' ? value : Number(value);
+          });
+          if (record.flight_id && record.tail_number && record.timestamp && record.phase) {
+            records.push(record);
+          }
+        }
+
+        if (records.length === 0) {
+          throw new Error('לא נמצאו רשומות תקינות בקובץ');
+        }
+
+        setProcessingProgress(75);
+        setProcessingStage('בונה טיסות…');
+
+        const flightGroups = new Map<string, CSVRecord[]>();
+        records.forEach((record) => {
+          const key = String(record.flight_id);
+          if (!flightGroups.has(key)) flightGroups.set(key, []);
+          flightGroups.get(key)!.push(record);
+        });
+
+        const telemetryParams = headers.filter(
+          (h) => !requiredColumns.includes(h),
+        );
+
+        const flights: ProcessedFlight[] = Array.from(flightGroups.entries()).map(
+          ([flightId, flightRecords]) => {
+            const sorted = flightRecords.sort(
+              (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+            );
+            return {
+              flight_id: flightId,
+              tail_number: String(sorted[0].tail_number),
+              records: sorted,
+              phases: [...new Set(sorted.map((r) => r.phase))],
+              startTime: sorted[0].timestamp,
+              endTime: sorted[sorted.length - 1].timestamp,
+              parameters: telemetryParams,
+            };
+          },
+        );
+
+        setRawData(records);
+        setProcessedFlights(flights);
+        setAvailableParameters(telemetryParams);
         setDataMode('live');
         setLastUploadTimestamp(new Date().toISOString());
-        setProcessingProgress(PROGRESS_STAGES.complete.progress);
-        setProcessingStage(PROGRESS_STAGES.complete.label);
+        setProcessingProgress(100);
+        setProcessingStage('הקובץ נטען בהצלחה');
       } catch (error) {
-        setProcessingError(error instanceof Error ? error.message : 'Upload failed.');
+        setProcessingError(error instanceof Error ? error.message : 'שגיאה בעיבוד הקובץ');
         throw error;
       } finally {
         setIsProcessing(false);
@@ -350,7 +415,7 @@ export const CSVDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setProcessingStage(null);
       }
     },
-    [restoreOperationalData],
+    [],
   );
 
   const createSelectionSet = (set: Omit<SelectionSet, 'id' | 'createdAt'>): string => {

@@ -37,6 +37,8 @@ const dossiers_api_1 = require("./routes/dossiers-api");
 const audit_api_1 = require("./routes/audit-api");
 const ingestion_1 = require("./routes/ingestion");
 const operations_flights_1 = require("./routes/operations-flights");
+const system_state_1 = require("./routes/system-state");
+const evidence_api_1 = require("./routes/evidence-api");
 const logger_1 = require("./utils/logger");
 const auth_service_1 = require("./services/auth-service");
 const source_config_service_1 = require("./services/source-config-service");
@@ -124,6 +126,8 @@ app.use('/api/dossiers', dossiers_api_1.dossiersApiRouter);
 app.use('/api/audit', audit_api_1.auditApiRouter);
 app.use('/api/ingestion', ingestion_1.ingestionRouter);
 app.use('/api/operations/flights', operations_flights_1.operationsFlightsRouter);
+app.use('/api/system', system_state_1.systemStateRouter);
+app.use('/api/evidence', evidence_api_1.evidenceApiRouter);
 // Legacy data proxy routes (API Key protected)
 app.use('/api/sources', sources_1.sourcesRouter);
 app.use('/api/sql', sql_1.sqlRouter);

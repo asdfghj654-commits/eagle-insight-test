@@ -14,14 +14,9 @@ export const DemoDataButton = ({
   size = "sm", 
   className = "" 
 }: DemoDataButtonProps) => {
-  const isDemoEnabled = import.meta.env.DEV;
   const { loadDemoData, processedFlights } = useCSVData();
   const hasData = processedFlights.length > 0;
   const { toast } = useToast();
-
-  if (!isDemoEnabled) {
-    return null;
-  }
 
   const handleLoadDemo = async () => {
     try {

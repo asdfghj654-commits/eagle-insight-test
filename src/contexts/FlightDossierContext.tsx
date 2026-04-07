@@ -32,9 +32,11 @@ import {
   tasksApi,
   auditApi,
   dossiersApi,
+  systemApi,
   FindingDto,
   TaskDto,
   AuditEntryDto,
+  DossierDto,
 } from '@/lib/api-client';
 
 // =============================================================================
@@ -155,9 +157,10 @@ export const FlightDossierProvider: React.FC<{ children: ReactNode }> = ({ child
 
   const refresh = useCallback(async () => {
     try {
-      const [findingsRes, tasksRes] = await Promise.all([
+      const [findingsRes, tasksRes, dossiersRes] = await Promise.all([
         findingsApi.list({ limit: 500 }),
         tasksApi.list(),
+        dossiersApi.list(),
       ]);
 
       if (findingsRes.ok && findingsRes.data) {
@@ -167,6 +170,18 @@ export const FlightDossierProvider: React.FC<{ children: ReactNode }> = ({ child
 
       if (tasksRes.ok && tasksRes.data) {
         setTasks(tasksRes.data.tasks.map(dtoToTask));
+      }
+
+      if (dossiersRes.ok && dossiersRes.data) {
+        setDossiers(dossiersRes.data.dossiers.map(dtoToDossier));
+      }
+
+      // Load system state (emergency mode persistence)
+      const stateRes = await systemApi.getState();
+      if (stateRes.ok && stateRes.data) {
+        const em = stateRes.data.emergencyMode;
+        setEmergencyModeState(em.active);
+        setEmergencyReasonState(em.active ? (em.reason ?? undefined) : undefined);
       }
 
       // Load audit (non-blocking — engineers/commanders only)
@@ -182,6 +197,10 @@ export const FlightDossierProvider: React.FC<{ children: ReactNode }> = ({ child
 
   useEffect(() => {
     refresh().finally(() => setIsInitialized(true));
+
+    // 30-second polling for multi-user sync
+    const interval = setInterval(() => { refresh(); }, 30_000);
+    return () => clearInterval(interval);
   }, [refresh]);
 
   // ===========================================================================
@@ -549,14 +568,25 @@ export const FlightDossierProvider: React.FC<{ children: ReactNode }> = ({ child
   const setEmergencyMode = useCallback((
     enabled: boolean,
     reason: string,
-    userId: string,
+    _userId: string,
     userRole: UserRole,
   ): ActionResult => {
     if (userRole !== 'commander') {
       return { success: false, error: 'Only commanders can toggle emergency mode', errorHe: 'רק מפקד יכול להפעיל מצב חירום' };
     }
+    // Optimistic update — revert if server call fails
     setEmergencyModeState(enabled);
     setEmergencyReasonState(enabled ? reason : undefined);
+
+    // Persist to server asynchronously
+    systemApi.setEmergencyMode(enabled, reason).then(res => {
+      if (!res.ok) {
+        // Revert on failure
+        setEmergencyModeState(!enabled);
+        setEmergencyReasonState(!enabled ? reason : undefined);
+      }
+    });
+
     return { success: true };
   }, []);
 
@@ -678,18 +708,38 @@ export const useFlightDossier = () => {
 // DTO ADAPTERS — map backend DTOs to frontend UI types
 // =============================================================================
 
+function dtoToDossier(dto: DossierDto): FlightDossier {
+  const now = dto.createdAt || new Date().toISOString();
+  return {
+    id: dto.id,
+    flightId: dto.flightId || dto.id,
+    tailNumber: dto.tailNumber || '',
+    squadron: '',
+    flightDate: dto.flightDate || now.slice(0, 10),
+    takeoffTime: '',
+    landingTime: '',
+    durationMinutes: 0,
+    missionType: 'training',
+    missionTypeHe: 'אימון',
+    pilotNameLocked: true,
+    // summary, maintenanceContext, readinessImpact are optional — we don't have them from the list DTO
+    findings: [],
+    evidence: [],
+    tasks: [],
+    status: 'new' as const,
+    createdAt: now,
+    updatedAt: dto.updatedAt || now,
+    createdBy: 'system',
+  };
+}
+
 function dtoToFinding(dto: FindingDto): Finding {
   const now = new Date().toISOString();
   return {
     id: dto.id,
     dossierIds: dto.dossierId ? [dto.dossierId] : [],
     severity: (dto.severity as SeverityLevel) || 'S3',
-    confidence: {
-      value: 85,
-      factors: [],
-      dataQuality: dto.sourceType === 'measured' ? 'complete' : 'partial',
-      dataQualityHe: dto.sourceType === 'measured' ? 'מלא' : 'חלקי',
-    },
+    // confidence is intentionally omitted — it is not computed until AI layer is active
     category: (dto.classification as any) || 'rule_violation',
     title: dto.title,
     titleHe: dto.titleHe || dto.title,

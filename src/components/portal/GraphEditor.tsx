@@ -41,7 +41,7 @@ export const GraphEditor: React.FC<GraphEditorProps> = ({
 }) => {
   const { availableParameters, createSelectionSet } = useCSVData();
   const [selectedParameters, setSelectedParameters] = useState<string[]>(initialParameters);
-  const [yAxisMode, setYAxisMode] = useState<'single' | 'dual'>('single');
+  const [yAxisMode, setYAxisMode] = useState<'single' | 'normalized' | 'dual'>('normalized');
   const [secondaryYParams, setSecondaryYParams] = useState<string[]>([]);
   const [overlayParams, setOverlayParams] = useState<string[]>([]);
   const [lineStyles, setLineStyles] = useState<Record<string, { width: number; type: 'solid' | 'dashed' | 'dotted' }>>({});
@@ -69,20 +69,38 @@ export const GraphEditor: React.FC<GraphEditorProps> = ({
     return categories;
   }, [availableParameters]);
 
+  // Per-param min/max for normalization (0-100 scale)
+  const paramRanges = useMemo(() => {
+    const ranges: Record<string, { min: number; max: number }> = {};
+    [...selectedParameters, ...overlayParams].forEach(param => {
+      const vals = initialData
+        .map(d => d[param])
+        .filter((v): v is number => v != null && typeof v === 'number' && isFinite(v));
+      if (vals.length > 0) {
+        ranges[param] = { min: Math.min(...vals), max: Math.max(...vals) };
+      }
+    });
+    return ranges;
+  }, [initialData, selectedParameters, overlayParams]);
+
   // Enhanced chart data with all parameters
   const chartData = useMemo(() => {
     if (!initialData.length) return [];
-    
     return initialData.map(point => {
       const enhanced = { ...point };
       [...selectedParameters, ...overlayParams].forEach(param => {
-        if (enhanced[param] === undefined) {
-          enhanced[param] = null;
+        if (enhanced[param] === undefined) enhanced[param] = null;
+
+        // Add normalized version
+        if (yAxisMode === 'normalized' && enhanced[param] != null && paramRanges[param]) {
+          const { min, max } = paramRanges[param];
+          const span = max - min || 1;
+          enhanced[`${param}__norm`] = ((enhanced[param] - min) / span) * 100;
         }
       });
       return enhanced;
     }).filter(point => point.timestamp);
-  }, [initialData, selectedParameters, overlayParams]);
+  }, [initialData, selectedParameters, overlayParams, yAxisMode, paramRanges]);
 
   const handleParameterToggle = (parameter: string, isOverlay = false) => {
     if (isOverlay) {
@@ -246,15 +264,21 @@ export const GraphEditor: React.FC<GraphEditorProps> = ({
               <CardContent className="space-y-3">
                 <div>
                   <label className="text-sm font-medium">מצב צירים:</label>
-                  <Select value={yAxisMode} onValueChange={(value: 'single' | 'dual') => setYAxisMode(value)}>
+                  <Select value={yAxisMode} onValueChange={(value: 'single' | 'normalized' | 'dual') => setYAxisMode(value)}>
                     <SelectTrigger className="w-full mt-1">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="single">ציר Y יחיד</SelectItem>
+                      <SelectItem value="normalized">מנורמל 0-100% (מומלץ)</SelectItem>
+                      <SelectItem value="single">ציר Y יחיד (ערכים מוחלטים)</SelectItem>
                       <SelectItem value="dual">2 צירי Y</SelectItem>
                     </SelectContent>
                   </Select>
+                  {yAxisMode === 'normalized' && (
+                    <p className="text-[10px] text-muted-foreground mt-1 leading-tight">
+                      כל פרמטר מוצג כ-% מהטווח שלו — מאפשר השוואה בין פרמטרים בסקאלות שונות
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -301,38 +325,47 @@ export const GraphEditor: React.FC<GraphEditorProps> = ({
                           scale="time"
                           domain={brushDomain || ['dataMin', 'dataMax']}
                         />
-                        <YAxis yAxisId="left" />
+                        <YAxis
+                          yAxisId="left"
+                          domain={yAxisMode === 'normalized' ? [0, 100] : ['auto', 'auto']}
+                          tickFormatter={yAxisMode === 'normalized' ? (v) => `${v}%` : undefined}
+                          label={yAxisMode === 'normalized' ? { value: '% טווח', angle: -90, position: 'insideLeft', fontSize: 10 } : undefined}
+                        />
                         {yAxisMode === 'dual' && <YAxis yAxisId="right" orientation="right" />}
-                        
-                        <ChartTooltip 
-                          labelFormatter={(value) => {
-                            const date = new Date(value).toLocaleString('he-IL');
-                            return `זמן: ${date}`;
-                          }}
+
+                        <ChartTooltip
+                          labelFormatter={(value) => `זמן: ${new Date(value).toLocaleString('he-IL')}`}
                           formatter={(value: any, name: string) => {
-                            const formattedValue = formatParameterValue(name, value);
-                            let label = getParameterLabel(name, false);
-                            if (secondaryYParams.includes(name)) label += ' (Y2)';
-                            if (overlayParams.includes(name)) label += ' (שכבה)';
-                            return [formattedValue, label];
+                            // Strip __norm suffix for display
+                            const realParam = name.endsWith('__norm') ? name.replace('__norm', '') : name;
+                            if (yAxisMode === 'normalized') {
+                              const range = paramRanges[realParam];
+                              const rawVal = range ? range.min + ((value / 100) * (range.max - range.min)) : value;
+                              return [`${Number(rawVal).toFixed(2)} (${Number(value).toFixed(1)}%)`, getParameterLabel(realParam, false)];
+                            }
+                            return [formatParameterValue(realParam, value), getParameterLabel(realParam, false)];
                           }}
                           contentStyle={{ direction: 'rtl', textAlign: 'right' }}
                         />
-                        
-                        {allDisplayedParams.map((param, index) => (
-                          <Line
-                            key={param}
-                            yAxisId={secondaryYParams.includes(param) ? "right" : "left"}
-                            type="monotone"
-                            dataKey={param}
-                            stroke={getParameterColor(param, index)}
-                            strokeWidth={overlayParams.includes(param) ? 1 : 2}
-                            strokeDasharray={overlayParams.includes(param) ? "5,5" : "0"}
-                            dot={false}
-                            connectNulls={false}
-                            opacity={overlayParams.includes(param) ? 0.6 : 1}
-                          />
-                        ))}
+
+                        {allDisplayedParams.map((param, index) => {
+                          const dataKey = yAxisMode === 'normalized' ? `${param}__norm` : param;
+                          return (
+                            <Line
+                              key={param}
+                              yAxisId={secondaryYParams.includes(param) ? 'right' : 'left'}
+                              type="monotone"
+                              dataKey={dataKey}
+                              name={param}
+                              stroke={getParameterColor(param, index)}
+                              strokeWidth={overlayParams.includes(param) ? 1 : 2}
+                              strokeDasharray={overlayParams.includes(param) ? '5,5' : '0'}
+                              dot={false}
+                              connectNulls={false}
+                              opacity={overlayParams.includes(param) ? 0.6 : 1}
+                            />
+                          );
+                        })}
                         
                         <Brush
                           dataKey="timestamp"

@@ -3,6 +3,23 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
+# Environment & secrets
+.env
+.env.local
+.env.production
+.env.*.local
+local-server/.env
+local-server/.env.local
+
+# Temp/junk files
+\!selectedFlight
+(initialParameters)
+10%
+clearInterval(interval)
+selectedFlight
+{,
+{,+
+
 # User-specific files
 *.rsuser
 *.suo

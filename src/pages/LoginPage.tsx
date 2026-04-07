@@ -1,363 +1,362 @@
 /**
- * Login Page - מגן דוד לאחזקה
- * 
- * Professional login page with:
- * - מגן דוד לאחזקה branding
- * - RTL support
- * - Demo user quick-login (dev only)
- * - Smooth transitions
- * - Form validation
- * - Loading states
+ * Login Page — Eagle Insight
+ *
+ * Two auth paths:
+ * 1. Real API: POST /api/auth/login with personal-number + password
+ *    Seeded users: 8234567 / 7123456 / 6012345 / 5001234, all password: "password"
+ * 2. Dev quick-login: one-click role cards (dev mode only, no server required)
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Separator } from '@/components/ui/separator';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
 import {
-  Shield,
-  Lock,
-  User,
-  AlertCircle,
-  Eye,
-  EyeOff,
-  Wrench,
-  Settings,
-  Crown,
-  Loader2,
+  Shield, Lock, User, AlertCircle, Eye, EyeOff,
+  Wrench, Settings, Crown, Loader2, Wifi, WifiOff, ChevronLeft,
 } from 'lucide-react';
 import { useAuth, DEMO_USERS } from '@/contexts/AuthContext';
 import { UserRole } from '@/types/core';
 
-// =============================================================================
-// DEMO USER CARDS (Dev only)
-// =============================================================================
-
-interface DemoUserCardProps {
+// ── Role configuration ────────────────────────────────────────────
+const ROLE_CONFIG: Record<UserRole, {
   userId: string;
-  onLogin: () => void;
-  isLoading: boolean;
-  loadingUserId: string | null;
-}
-
-const DemoUserCard: React.FC<DemoUserCardProps> = ({ userId, onLogin, isLoading, loadingUserId }) => {
-  const user = DEMO_USERS[userId];
-  if (!user) return null;
-
-  const isThisLoading = isLoading && loadingUserId === userId;
-
-  const getRoleIcon = (role: UserRole) => {
-    switch (role) {
-      case 'technician': return <Wrench className="h-5 w-5" />;
-      case 'specialist': return <Settings className="h-5 w-5" />;
-      case 'engineer': return <Shield className="h-5 w-5" />;
-      case 'commander': return <Crown className="h-5 w-5" />;
-    }
-  };
-
-  const getRoleColor = (role: UserRole) => {
-    switch (role) {
-      case 'technician': return 'border-blue-300 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950 dark:hover:bg-blue-900';
-      case 'specialist': return 'border-green-300 bg-green-50 hover:bg-green-100 dark:bg-green-950 dark:hover:bg-green-900';
-      case 'engineer': return 'border-purple-300 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950 dark:hover:bg-purple-900';
-      case 'commander': return 'border-orange-300 bg-orange-50 hover:bg-orange-100 dark:bg-orange-950 dark:hover:bg-orange-900';
-    }
-  };
-
-  return (
-    <button
-      onClick={onLogin}
-      disabled={isLoading}
-      className={`p-3 rounded-lg border-2 transition-all duration-200 text-right w-full ${getRoleColor(user.role)} disabled:opacity-50 disabled:cursor-not-allowed`}
-    >
-      <div className="flex items-center gap-3">
-        <div className="p-2 rounded-full bg-white/50 dark:bg-black/20">
-          {isThisLoading ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
-          ) : (
-            getRoleIcon(user.role)
-          )}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-medium truncate">{user.nameHe}</p>
-          <p className="text-xs text-muted-foreground">{user.roleHe}</p>
-        </div>
-      </div>
-    </button>
-  );
+  labelHe: string;
+  descHe: string;
+  icon: React.ElementType;
+  accentClass: string;
+  borderClass: string;
+  bgClass: string;
+}> = {
+  technician: {
+    userId: 'tech001',
+    labelHe: 'טכנאי מטוסים',
+    descHe: 'תור משימות · אישורי ממצאים',
+    icon: Wrench,
+    accentClass: 'text-blue-400',
+    borderClass: 'border-blue-500/40 hover:border-blue-400',
+    bgClass: 'bg-blue-500/10 hover:bg-blue-500/15',
+  },
+  specialist: {
+    userId: 'spec001',
+    labelHe: 'ר"צ אחזקה',
+    descHe: 'ניהול ממצאים · סקירת צי',
+    icon: Settings,
+    accentClass: 'text-emerald-400',
+    borderClass: 'border-emerald-500/40 hover:border-emerald-400',
+    bgClass: 'bg-emerald-500/10 hover:bg-emerald-500/15',
+  },
+  engineer: {
+    userId: 'eng001',
+    labelHe: 'מהנדס אחזקה',
+    descHe: 'חקירת סיגנלים · ניהול כללים',
+    icon: Shield,
+    accentClass: 'text-violet-400',
+    borderClass: 'border-violet-500/40 hover:border-violet-400',
+    bgClass: 'bg-violet-500/10 hover:bg-violet-500/15',
+  },
+  commander: {
+    userId: 'cmd001',
+    labelHe: 'מפקד גף טכני',
+    descHe: 'כשירות צי · ניהול סיכונים',
+    icon: Crown,
+    accentClass: 'text-amber-400',
+    borderClass: 'border-amber-500/40 hover:border-amber-400',
+    bgClass: 'bg-amber-500/10 hover:bg-amber-500/15',
+  },
 };
 
-// =============================================================================
-// MAIN LOGIN PAGE
-// =============================================================================
+const ROLE_ORDER: UserRole[] = ['technician', 'specialist', 'engineer', 'commander'];
 
+// ── Seeded credentials table ──────────────────────────────────────
+const SEED_CREDENTIALS = [
+  { roleHe: 'טכנאי',  personalNumber: '8234567' },
+  { roleHe: 'ר"צ',    personalNumber: '7123456' },
+  { roleHe: 'מהנדס',  personalNumber: '6012345' },
+  { roleHe: 'מפקד',   personalNumber: '5001234' },
+];
+
+// ── Main component ────────────────────────────────────────────────
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
-  const { login, devLoginAs, isAuthenticated, getDefaultRoute, isDevelopment, authMode } = useAuth();
-  
-  // Form state
+  const { login, devLoginAs, isAuthenticated, getDefaultRoute, isDevelopment, serverAvailable } = useAuth();
+
   const [personalNumber, setPersonalNumber] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
-  
-  // UI state
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingUserId, setLoadingUserId] = useState<string | null>(null);
+  const [loadingRole, setLoadingRole] = useState<UserRole | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [showCredentials, setShowCredentials] = useState(false);
 
-  // Smooth redirect when authenticated
+  // Redirect once authenticated
   useEffect(() => {
     if (isAuthenticated) {
       setIsTransitioning(true);
-      // Smooth transition delay
-      const timer = setTimeout(() => {
-        navigate(getDefaultRoute(), { replace: true });
-      }, 300);
-      return () => clearTimeout(timer);
+      const t = setTimeout(() => navigate(getDefaultRoute(), { replace: true }), 280);
+      return () => clearTimeout(t);
     }
   }, [isAuthenticated, navigate, getDefaultRoute]);
 
-  // =============================================================================
-  // HANDLERS
-  // =============================================================================
-
+  // ── Form login ────────────────────────────────────────────────
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
-    setLoadingUserId(null);
-
     try {
       const result = await login(personalNumber, password);
-      
       if (!result.success) {
-        setError(result.errorHe || result.error || 'שגיאה בהתחברות');
-        setIsLoading(false);
+        setError(result.errorHe || 'מספר אישי או סיסמה שגויים');
       }
-    } catch (err) {
-      setError('שגיאה בהתחברות למערכת');
+    } catch {
+      setError('שגיאה בהתחברות. ודא שהשרת המקומי פועל.');
+    } finally {
       setIsLoading(false);
     }
   }, [login, personalNumber, password]);
 
-  const handleDevLogin = useCallback(async (role: UserRole, userId: string) => {
-    setIsLoading(true);
-    setLoadingUserId(userId);
+  // ── Dev quick-login ───────────────────────────────────────────
+  const handleQuickLogin = useCallback(async (role: UserRole) => {
+    setLoadingRole(role);
     setError(null);
-    
     try {
-      // devLoginAs sets the user synchronously; navigation happens via useEffect
       devLoginAs(role);
-    } catch (err) {
-      setError('שגיאה בהתחברות');
-      setIsLoading(false);
-      setLoadingUserId(null);
+    } catch {
+      setError('שגיאה בכניסה מהירה');
+      setLoadingRole(null);
     }
   }, [devLoginAs]);
 
-  // =============================================================================
-  // RENDER
-  // =============================================================================
-
-  const isAuthReady = authMode === 'api' || authMode === 'demo';
-
+  // ── Render ────────────────────────────────────────────────────
   return (
-    <div 
-      className={`relative min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4 transition-opacity duration-300 ${isTransitioning ? 'opacity-80' : 'opacity-100'}`} 
+    <div
+      className={`min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden transition-opacity duration-300 ${isTransitioning ? 'opacity-60' : 'opacity-100'}`}
+      style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 40%, #0f172a 100%)' }}
       dir="rtl"
     >
-      {/* Background pattern */}
-      <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PHBhdGggZD0iTTM2IDM0djItSDI0di0yaDEyek0zNiAzMHYySDI0di0yaDEyeiIvPjwvZz48L2c+PC9zdmc+')] opacity-50" />
+      {/* Subtle grid overlay */}
+      <div
+        className="absolute inset-0 opacity-[0.04]"
+        style={{
+          backgroundImage: 'linear-gradient(rgba(255,255,255,0.8) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.8) 1px, transparent 1px)',
+          backgroundSize: '48px 48px',
+        }}
+      />
 
+      {/* Glow accent */}
+      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full opacity-10"
+        style={{ background: 'radial-gradient(circle, #6366f1 0%, transparent 70%)' }} />
+
+      {/* Transition overlay */}
       {isTransitioning && (
-        <div className="absolute inset-0 flex items-center justify-center bg-slate-950/60">
-          <div className="text-center">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 shadow-xl mb-4 mx-auto flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
-            </div>
-            <p className="text-blue-100 text-sm">מעביר אותך למערכת...</p>
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm">
+          <div className="text-center space-y-3">
+            <Loader2 className="h-10 w-10 text-blue-400 animate-spin mx-auto" />
+            <p className="text-blue-200 text-sm">מעביר אותך למערכת…</p>
           </div>
         </div>
       )}
-      
-      <div className="relative w-full max-w-md">
-        {/* Logo & Title - מגן דוד לאחזקה */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 shadow-xl mb-4 relative">
-            <Shield className="h-10 w-10 text-white" />
-            <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-md">
-              <span className="text-blue-700 text-xs font-bold">✡</span>
-            </div>
+
+      <div className="relative w-full max-w-md space-y-6">
+
+        {/* ── Branding ───────────────────────────────────────── */}
+        <div className="text-center space-y-3">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl shadow-2xl relative"
+            style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)' }}>
+            <Shield className="h-8 w-8 text-white" />
+            <span className="absolute -bottom-1 -left-1 w-5 h-5 bg-white rounded-full flex items-center justify-center shadow-md text-blue-700 text-[10px] font-bold">✡</span>
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">מגן דוד לאחזקה</h1>
-          <p className="text-blue-200">מערכת תובנות מערכת לאחר טיסה</p>
+          <div>
+            <h1 className="text-2xl font-bold text-white tracking-tight">Eagle Insight</h1>
+            <p className="text-slate-400 text-sm mt-0.5">מערכת תובנות טיסה — ענף טכני</p>
+          </div>
         </div>
 
-        {/* Login Card */}
-        <Card className="border-0 shadow-2xl">
-          <CardHeader className="text-center pb-4">
-            <CardTitle className="text-xl">כניסה למערכת</CardTitle>
-            <CardDescription>הזן את פרטי ההזדהות שלך</CardDescription>
-          </CardHeader>
-          
-          <CardContent className="space-y-6">
-            {/* Error Alert */}
+        {/* ── Login card ─────────────────────────────────────── */}
+        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md shadow-2xl overflow-hidden">
+
+          {/* Card header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+            <span className="text-white font-semibold text-sm">כניסה למערכת</span>
+            <div className="flex items-center gap-1.5 text-xs">
+              {serverAvailable ? (
+                <>
+                  <Wifi className="h-3 w-3 text-emerald-400" />
+                  <span className="text-emerald-400">שרת מחובר</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="h-3 w-3 text-amber-400" />
+                  <span className="text-amber-400">{isDevelopment ? 'מצב דמו' : 'שרת לא זמין'}</span>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="p-6 space-y-5">
+            {/* Error */}
             {error && (
-              <Alert variant="destructive">
+              <Alert variant="destructive" className="py-2">
                 <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
+                <AlertDescription className="text-sm">{error}</AlertDescription>
               </Alert>
             )}
 
-            {authMode !== 'demo' && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  סביבת PROD מחייבת הזדהות חיצונית מוגדרת. פנה למנהל מערכת להגדרת ספק הזדהות.
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {/* Login Form */}
+            {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Personal Number */}
-              <div className="space-y-2">
-                <Label htmlFor="personalNumber">מספר אישי</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="personalNumber" className="text-slate-300 text-xs">מספר אישי</Label>
                 <div className="relative">
-                  <User className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <User className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
                   <Input
                     id="personalNumber"
                     type="text"
-                    placeholder="הזן מספר אישי"
+                    inputMode="numeric"
+                    placeholder="למשל: 8234567"
                     value={personalNumber}
-                    onChange={(e) => setPersonalNumber(e.target.value)}
-                    className="pr-10"
-                    disabled={isLoading || !isAuthReady}
+                    onChange={e => setPersonalNumber(e.target.value)}
+                    className="pr-10 bg-white/5 border-white/20 text-white placeholder:text-slate-600 focus:border-blue-500 focus:ring-blue-500/20"
+                    disabled={isLoading}
                     required
+                    autoComplete="username"
                   />
                 </div>
               </div>
 
-              {/* Password */}
-              <div className="space-y-2">
-                <Label htmlFor="password">סיסמה</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="password" className="text-slate-300 text-xs">סיסמה</Label>
                 <div className="relative">
-                  <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
                   <Input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
                     placeholder="הזן סיסמה"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="pr-10 pl-10"
-                    disabled={isLoading || !isAuthReady}
+                    onChange={e => setPassword(e.target.value)}
+                    className="pr-10 pl-10 bg-white/5 border-white/20 text-white placeholder:text-slate-600 focus:border-blue-500 focus:ring-blue-500/20"
+                    disabled={isLoading}
                     required
+                    autoComplete="current-password"
                   />
                   <button
                     type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowPassword(v => !v)}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+                    tabIndex={-1}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
               </div>
 
-              {/* Remember Me */}
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="remember"
-                  checked={rememberMe}
-                  onCheckedChange={(checked) => setRememberMe(checked as boolean)}
-                  disabled={!isAuthReady}
-                />
-                <Label htmlFor="remember" className="text-sm font-normal cursor-pointer">
-                  זכור אותי
-                </Label>
-              </div>
-
-              {/* Submit Button */}
-              <Button 
-                type="submit" 
-                className="w-full" 
+              <Button
+                type="submit"
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium"
                 size="lg"
-                disabled={isLoading || !personalNumber || !password || !isAuthReady}
+                disabled={isLoading || !personalNumber || !password}
               >
-                {isLoading && !loadingUserId ? (
-                  <div className="flex items-center gap-2">
+                {isLoading ? (
+                  <span className="flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>מתחבר...</span>
-                  </div>
+                    מתחבר…
+                  </span>
                 ) : (
-                  'התחבר'
+                  <span className="flex items-center gap-2">
+                    <ChevronLeft className="h-4 w-4" />
+                    התחבר
+                  </span>
                 )}
               </Button>
             </form>
 
-            {/* Dev Mode Quick Login - DEVELOPMENT ONLY */}
-            {isDevelopment && authMode === 'demo' && (
-              <>
-                <div className="relative">
-                  <Separator />
-                  <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-xs text-orange-500 font-medium">
-                    ⚠️ מצב פיתוח בלבד
-                  </span>
-                </div>
-
-                <Alert className="bg-orange-50 dark:bg-orange-950 border-orange-200">
-                  <AlertCircle className="h-4 w-4 text-orange-500" />
-                  <AlertDescription className="text-xs text-orange-700 dark:text-orange-300">
-                    כניסה מהירה זמינה רק במצב פיתוח. בסביבת ייצור, יש להשתמש בטופס התחברות.
-                  </AlertDescription>
-                </Alert>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <DemoUserCard 
-                    userId="tech001" 
-                    onLogin={() => handleDevLogin('technician', 'tech001')}
-                    isLoading={isLoading}
-                    loadingUserId={loadingUserId}
-                  />
-                  <DemoUserCard 
-                    userId="spec001" 
-                    onLogin={() => handleDevLogin('specialist', 'spec001')}
-                    isLoading={isLoading}
-                    loadingUserId={loadingUserId}
-                  />
-                  <DemoUserCard 
-                    userId="eng001" 
-                    onLogin={() => handleDevLogin('engineer', 'eng001')}
-                    isLoading={isLoading}
-                    loadingUserId={loadingUserId}
-                  />
-                  <DemoUserCard 
-                    userId="cmd001" 
-                    onLogin={() => handleDevLogin('commander', 'cmd001')}
-                    isLoading={isLoading}
-                    loadingUserId={loadingUserId}
-                  />
-                </div>
-
-                <div className="text-center">
-                  <p className="text-xs text-muted-foreground">
-                    סיסמאות דמו: tech123 / spec123 / eng123 / cmd123
-                  </p>
-                </div>
-              </>
+            {/* Credentials hint (collapsible) */}
+            {isDevelopment && (
+              <div className="pt-1">
+                <button
+                  onClick={() => setShowCredentials(v => !v)}
+                  className="text-xs text-slate-500 hover:text-slate-400 flex items-center gap-1 transition-colors w-full justify-center"
+                >
+                  {showCredentials ? 'הסתר פרטי כניסה' : 'הצג פרטי כניסה לבדיקה'}
+                </button>
+                {showCredentials && (
+                  <div className="mt-2 rounded-lg border border-white/10 bg-white/5 overflow-hidden">
+                    <div className="px-3 py-1.5 text-[10px] text-slate-400 border-b border-white/10 text-center">
+                      סיסמה לכולם: <code className="text-amber-400 font-mono font-bold">password</code>
+                    </div>
+                    <div className="divide-y divide-white/5">
+                      {SEED_CREDENTIALS.map(c => (
+                        <div key={c.personalNumber} className="flex items-center justify-between px-3 py-1.5 text-xs">
+                          <span className="text-slate-400">{c.roleHe}</span>
+                          <code className="text-slate-300 font-mono">{c.personalNumber}</code>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        {/* Footer */}
-        <p className="text-center text-xs text-blue-300 mt-6">
-          © 2024 חיל האוויר הישראלי - ענף טכני
+        {/* ── Dev quick-login ─────────────────────────────────── */}
+        {isDevelopment && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-white/10" />
+              <span className="text-xs text-slate-500 whitespace-nowrap">כניסה מהירה — פיתוח בלבד</span>
+              <div className="flex-1 h-px bg-white/10" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {ROLE_ORDER.map(role => {
+                const cfg = ROLE_CONFIG[role];
+                const user = DEMO_USERS[cfg.userId];
+                if (!user) return null;
+                const Icon = cfg.icon;
+                const isThisLoading = loadingRole === role;
+                return (
+                  <button
+                    key={role}
+                    onClick={() => handleQuickLogin(role)}
+                    disabled={isLoading || !!loadingRole}
+                    className={`relative p-3.5 rounded-xl border text-right transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${cfg.borderClass} ${cfg.bgClass}`}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <div className={`mt-0.5 p-1.5 rounded-lg bg-white/5 flex-shrink-0 ${cfg.accentClass}`}>
+                        {isThisLoading
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <Icon className="h-4 w-4" />
+                        }
+                      </div>
+                      <div className="min-w-0">
+                        <p className={`text-sm font-semibold leading-tight ${cfg.accentClass}`}>
+                          {cfg.labelHe}
+                        </p>
+                        <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">
+                          {cfg.descHe}
+                        </p>
+                        <p className="text-[10px] text-slate-600 mt-1 font-mono">
+                          {user.rankHe}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── Footer ─────────────────────────────────────────── */}
+        <p className="text-center text-xs text-slate-600">
+          © {new Date().getFullYear()} חיל האוויר הישראלי — ענף טכני
+          {isDevelopment && (
+            <Badge variant="outline" className="mr-2 text-[10px] border-slate-700 text-slate-500">DEV</Badge>
+          )}
         </p>
       </div>
     </div>

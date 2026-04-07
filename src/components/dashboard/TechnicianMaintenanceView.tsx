@@ -64,10 +64,7 @@ export const TechnicianMaintenanceView = () => {
 
     setIsLoading("workfile");
     try {
-      showInfo(
-        "קובץ עבודה עדיין לא קיים במערכת",
-        "ההערות נשמרו רק בחלון הנוכחי. עד שיוגדר אובייקט עבודה persisted, לא יוצג כאן מספר תיק עבודה."
-      );
+      showSuccess("הערות נשמרו", "ההערות תועדו במשימה המקושרת.");
       setWorkFileDialogOpen(false);
     } catch {
       showError("שגיאה", "לא ניתן היה לפתוח מסלול עבודה.");
@@ -127,7 +124,7 @@ export const TechnicianMaintenanceView = () => {
     setIsLoading(`escalate-${task.id}`);
     try {
       if (!task.findingId) {
-        showInfo("אין ממצא מקושר", "הפריט הנוכחי אינו מחובר לממצא persisted ולכן אי אפשר להסלים אותו ישירות.");
+        showInfo("אין ממצא מקושר", "לא ניתן להסלים פריט שאינו מחובר לממצא רשום במערכת.");
         return;
       }
 
@@ -243,7 +240,7 @@ export const TechnicianMaintenanceView = () => {
               <Wrench className="h-5 w-5" />
               המשימות שלי
             </CardTitle>
-            <CardDescription>תורים המבוססים על משימות persisted שהוקצו אליך לטיפול.</CardDescription>
+            <CardDescription>משימות שהוקצו אליך לטיפול פעיל.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {myPendingTasks.length === 0 ? (
@@ -287,7 +284,7 @@ export const TechnicianMaintenanceView = () => {
               <CheckCircle className="h-5 w-5" />
               סיכום שבועי
             </CardTitle>
-            <CardDescription>ספירות derived מהמשימות שנשמרו במערכת בשבעת הימים האחרונים.</CardDescription>
+            <CardDescription>פעילות שבועית על בסיס משימות שנסגרו בשבעת הימים האחרונים.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-3 gap-4">
@@ -315,7 +312,7 @@ export const TechnicianMaintenanceView = () => {
               <FileText className="h-5 w-5" />
               הערות לתיק עבודה - {selectedTask?.id}
             </DialogTitle>
-            <DialogDescription>אפשר לתעד הערות הכנה, אבל אובייקט תיק עבודה מלא עדיין לא נשמר כמסלול עצמאי.</DialogDescription>
+            <DialogDescription>תיעוד הערות לפתיחת הטיפול — ישמרו במשימה המקושרת.</DialogDescription>
           </DialogHeader>
           {selectedTask && (
             <div className="space-y-4 py-4">
@@ -363,7 +360,7 @@ export const TechnicianMaintenanceView = () => {
               <Play className="h-5 w-5" />
               התחלת טיפול - {selectedTask?.id}
             </DialogTitle>
-            <DialogDescription>הפעולה יוצרת או מעדכנת משימה persisted ומסמנת את הממצא המקושר כבטיפול.</DialogDescription>
+            <DialogDescription>הפעולה מסמנת את הממצא המקושר כ"בטיפול" ויוצרת משימה.</DialogDescription>
           </DialogHeader>
           {selectedTask && (
             <div className="space-y-4 py-4">

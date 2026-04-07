@@ -122,11 +122,11 @@ const isDevelopment = import.meta.env.DEV || import.meta.env.MODE === 'developme
 
 function resolveAuthMode(): AuthMode {
   const env = import.meta.env.VITE_AUTH_MODE as string | undefined;
-  if (env === 'api')   return 'api';
-  if (env === 'demo')  return 'demo';
+  if (env === 'api')      return 'api';
+  if (env === 'demo')     return 'demo';
   if (env === 'disabled') return 'disabled';
-  // Default: api in all modes (with demo fallback when server unreachable)
-  return 'api';
+  // Default: demo in dev (enables quick-login + fallback), api in production
+  return import.meta.env.DEV ? 'demo' : 'api';
 }
 
 const authMode = resolveAuthMode();

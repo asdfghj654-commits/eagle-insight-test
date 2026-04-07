@@ -17,6 +17,7 @@ import NotFound from "./pages/NotFound";
 import EngineeringPortal from "./pages/EngineeringPortal";
 import CommanderView from "./pages/CommanderView";
 import LoginPage from "./pages/LoginPage";
+import Review from "./pages/Review";
 
 const queryClient = new QueryClient();
 
@@ -204,6 +205,16 @@ const App = () => (
                     element={<Navigate to="/commander" replace />}
                   />
                   
+                  {/* Rules review page — accessible to engineers and commanders */}
+                  <Route
+                    path="/review"
+                    element={
+                      <ProtectedRoute roles={['engineer', 'specialist', 'commander']}>
+                        <Review />
+                      </ProtectedRoute>
+                    }
+                  />
+
                   {/* Legacy route - redirect to role-based */}
                   <Route path="/dashboard" element={<Navigate to="/" replace />} />
                   

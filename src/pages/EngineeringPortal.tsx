@@ -25,9 +25,12 @@ import {
   Search,
   Clock,
   AlertCircle,
+  ClipboardList,
 } from "lucide-react";
-import { useRole } from "@/components/dashboard/RoleProvider";
+import { useAuth } from "@/contexts/AuthContext";
 import { useCSVData } from "@/contexts/CSVDataContext";
+import { AiPanel } from "@/components/ai/AiPanel";
+import { DataQualityPanel } from "@/components/portal/DataQualityPanel";
 import { useFlightDossier } from "@/contexts/FlightDossierContext";
 import { CSVUpload } from "@/components/CSVUpload";
 import { SignalsTab } from "@/components/portal/SignalsTab";
@@ -37,10 +40,8 @@ import { CorrelationsTab } from "@/components/portal/CorrelationsTab";
 import { EvidenceTab } from "@/components/portal/EvidenceTab";
 import { RuleComposerTab } from "@/components/portal/RuleComposerTab";
 import { useNavigate } from "react-router-dom";
-import { DataAdapter } from "@/lib/data-adapter";
 
 const SafetyBanner = () => {
-  const { currentUser } = useRole();
   const { emergencyMode, emergencyReason, getFleetReadiness, findings } = useFlightDossier();
   const [riskMatrixOpen, setRiskMatrixOpen] = useState(false);
   const readiness = getFleetReadiness();
@@ -140,41 +141,39 @@ const SafetyBanner = () => {
 };
 
 const PortalHeader = () => {
-  const { currentUser } = useRole();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   return (
     <header className="border-b bg-card">
       <SafetyBanner />
-      <div className="px-6 py-4">
-        <div className="grid grid-cols-3 items-center gap-4" dir="rtl">
+      <div className="px-4 py-2.5">
+        <div className="grid grid-cols-3 items-center gap-3" dir="rtl">
           <div className="flex items-center gap-6 justify-start flex-row-reverse">
             <div className="flex items-center gap-3 flex-row-reverse">
               <div className="text-right">
-                <h1 className="text-2xl font-bold">פורטל מגן דוד לאחזקה</h1>
-                <p className="text-sm text-muted-foreground">סביבת תחקור הנדסית F-16</p>
+                <h1 className="text-lg font-bold leading-tight">פורטל מגן דוד לאחזקה</h1>
+                <p className="text-xs text-muted-foreground">סביבת תחקור הנדסית F-16</p>
               </div>
               <Settings className="h-8 w-8 text-primary" />
             </div>
           </div>
 
-          <div className="flex items-center gap-3 justify-center flex-row-reverse">
+          <div className="flex items-center gap-2 justify-center flex-row-reverse">
             <Button variant="outline" onClick={() => navigate('/')} className="flex items-center gap-2 flex-row-reverse">
               <span>תובנות מערכת</span>
               <BarChart3 className="h-4 w-4" />
             </Button>
+            <Button variant="outline" onClick={() => navigate('/review')} className="flex items-center gap-2 flex-row-reverse">
+              <span>תור אישורים</span>
+              <ClipboardList className="h-4 w-4" />
+            </Button>
           </div>
 
           <div className="flex items-center gap-4 justify-end flex-row-reverse">
-            <div className="text-center border-l pl-4">
-              <p className="text-lg font-mono font-bold" suppressHydrationWarning>
-                {new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-              </p>
-              <p className="text-xs text-muted-foreground">{new Date().toLocaleDateString('he-IL')}</p>
-            </div>
             <div className="text-right">
-              <p className="text-sm font-medium">מהנדס {currentUser.name} ({currentUser.id})</p>
-              <p className="text-xs text-muted-foreground">{currentUser.rank}</p>
+              <p className="text-sm font-medium">{user?.nameHe || user?.name || 'מהנדס'}</p>
+              <p className="text-xs text-muted-foreground">{user?.rankHe || user?.role}</p>
             </div>
           </div>
         </div>
@@ -183,112 +182,171 @@ const PortalHeader = () => {
   );
 };
 
+type NavTab = 'research' | 'selections' | 'time' | 'quality';
+
+const NAV_TABS: { id: NavTab; label: string; labelShort: string; icon: React.ElementType }[] = [
+  { id: 'research',   label: 'תמונת מחקר',    labelShort: 'מחקר',   icon: Search   },
+  { id: 'selections', label: 'בחירות שמורות', labelShort: 'בחירות', icon: Eye      },
+  { id: 'time',       label: 'זמן נתונים',    labelShort: 'זמן',    icon: Clock    },
+  { id: 'quality',    label: 'איכות נתונים',  labelShort: 'איכות',  icon: Activity },
+];
+
 const DataNavigator = () => {
   const { availableParameters, processedFlights, selectionSets, dataStats } = useCSVData();
+  const [activeTab, setActiveTab] = useState<NavTab>('research');
 
   const topAircraft = useMemo(() => {
     const counts = new Map<string, number>();
     processedFlights.forEach((flight) => {
       counts.set(flight.tail_number, (counts.get(flight.tail_number) || 0) + 1);
     });
-    return Array.from(counts.entries()).sort((left, right) => right[1] - left[1]).slice(0, 5);
+    return Array.from(counts.entries()).sort((l, r) => r[1] - l[1]).slice(0, 5);
   }, [processedFlights]);
 
-  const topParameters = useMemo(() => availableParameters.slice(0, 10), [availableParameters]);
-
   return (
-    <div className="w-80 border-l bg-sidebar p-4 space-y-6" dir="rtl">
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Search className="h-4 w-4" />
-            תמונת מחקר
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">טיסות</span>
-            <Badge variant="secondary">{dataStats.flightCount}</Badge>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">מטוסים</span>
-            <Badge variant="secondary">{dataStats.aircraftCount}</Badge>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">פרמטרים</span>
-            <Badge variant="secondary">{dataStats.parameterCount}</Badge>
-          </div>
-          <div className="space-y-2">
-            <div className="font-medium">זנבות מובילים</div>
-            {topAircraft.map(([tail, count]) => (
-              <div key={tail} className="flex items-center justify-between text-xs">
-                <span>{tail}</span>
-                <span className="text-muted-foreground">{count} טיסות</span>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+    <div
+      className="w-72 flex-shrink-0 border-l bg-sidebar flex flex-col"
+      style={{ height: 'calc(100vh - 120px)', position: 'sticky', top: '0' }}
+      dir="rtl"
+    >
+      {/* AI panel pinned at top */}
+      <div className="p-3 border-b flex-shrink-0">
+        <AiPanel slot="investigation_assist" roleScope="engineer" compact={false} defaultOpen={true} />
+      </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Database className="h-4 w-4" />
-            פרמטרים מובילים
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {topParameters.length === 0 ? (
-            <div className="text-xs text-muted-foreground">אין עדיין פרמטרים זמינים למחקר.</div>
-          ) : (
-            topParameters.map((param) => (
-              <div key={param} className="flex items-center justify-between gap-2 rounded-md border p-2 text-xs">
-                <div className="min-w-0">
-                  <div className="truncate font-medium">{DataAdapter.getParameterDisplayName(param)}</div>
-                  <div className="truncate text-muted-foreground">{param}</div>
+      {/* Vertical tabs + content */}
+      <div className="flex flex-1 min-h-0">
+        {/* Left tab strip */}
+        <div className="w-14 border-r flex flex-col py-1 gap-0.5 bg-muted/20 flex-shrink-0" dir="ltr">
+          {NAV_TABS.map(tab => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                title={tab.label}
+                className={`flex flex-col items-center gap-1 px-1 py-3 text-center transition-colors rounded-md mx-1 ${
+                  active
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <Icon className="h-4 w-4 flex-shrink-0" />
+                <span className="text-[9px] leading-tight font-medium">{tab.labelShort}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Tab content */}
+        <div className="flex-1 overflow-y-auto p-3 min-h-0" dir="rtl">
+
+          {/* ── תמונת מחקר ── */}
+          {activeTab === 'research' && (
+            <div className="space-y-3">
+              <div className="text-xs font-semibold text-muted-foreground pb-1 border-b">תמונת מחקר</div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">טיסות</span>
+                  <Badge variant="secondary" className="text-xs">{dataStats.flightCount}</Badge>
                 </div>
-                <Badge variant="outline">{DataAdapter.getParameterSystem(param)}</Badge>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">מטוסים</span>
+                  <Badge variant="secondary" className="text-xs">{dataStats.aircraftCount}</Badge>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">פרמטרים</span>
+                  <Badge variant="secondary" className="text-xs">{dataStats.parameterCount}</Badge>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">רשומות</span>
+                  <Badge variant="secondary" className="text-xs">{dataStats.recordCount.toLocaleString()}</Badge>
+                </div>
               </div>
-            ))
+              {topAircraft.length > 0 && (
+                <div className="space-y-1 pt-2 border-t">
+                  <div className="text-xs font-medium text-muted-foreground">זנבות בנתונים</div>
+                  {topAircraft.map(([tail, count]) => (
+                    <div key={tail} className="flex items-center justify-between text-xs">
+                      <span className="font-mono">{tail}</span>
+                      <span className="text-muted-foreground">{count} טיסות</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Eye className="h-4 w-4" />
-            בחירות שמורות
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {selectionSets.length === 0 ? (
-            <div className="text-xs text-muted-foreground">אין בחירות שמורות</div>
-          ) : (
-            selectionSets.map((set) => (
-              <div key={set.id} className="flex items-center gap-2 p-2 rounded bg-muted">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: set.color }} />
-                <span className="text-xs font-medium">{set.name}</span>
-                <Badge variant="outline" className="text-xs">{set.id}</Badge>
+          {/* ── בחירות שמורות ── */}
+          {activeTab === 'selections' && (
+            <div className="space-y-2">
+              <div className="text-xs font-semibold text-muted-foreground pb-1 border-b flex items-center gap-1.5">
+                בחירות שמורות
+                {selectionSets.length > 0 && (
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1">{selectionSets.length}</Badge>
+                )}
               </div>
-            ))
+              {selectionSets.length === 0 ? (
+                <p className="text-xs text-muted-foreground pt-2">
+                  גרור אזור בגרף האותות כדי לשמור בחירה
+                </p>
+              ) : (
+                <div className="space-y-1.5 overflow-y-auto">
+                  {selectionSets.map((set, idx) => (
+                    <div key={set.id} className="flex items-center gap-2 p-2 rounded-lg bg-muted/60 text-xs">
+                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: set.color }} />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate">{set.name}</div>
+                        <div className="text-muted-foreground text-[10px]">{set.data.length} נקודות</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Clock className="h-4 w-4" />
-            זמן נתונים
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="text-xs text-muted-foreground">
-          {dataStats.dateRange
-            ? `${new Date(dataStats.dateRange.from).toLocaleString('he-IL')} עד ${new Date(dataStats.dateRange.to).toLocaleString('he-IL')}`
-            : 'אין טווח זמן זמין.'}
-        </CardContent>
-      </Card>
+          {/* ── זמן נתונים ── */}
+          {activeTab === 'time' && (
+            <div className="space-y-3">
+              <div className="text-xs font-semibold text-muted-foreground pb-1 border-b">טווח זמן נתונים</div>
+              {dataStats.dateRange ? (
+                <div className="space-y-2 text-xs">
+                  <div>
+                    <div className="text-muted-foreground">מ-</div>
+                    <div className="font-mono mt-0.5">
+                      {new Date(dataStats.dateRange.from).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">עד-</div>
+                    <div className="font-mono mt-0.5">
+                      {new Date(dataStats.dateRange.to).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                  <div className="pt-1 border-t">
+                    <div className="text-muted-foreground">משך כולל</div>
+                    <div className="font-medium mt-0.5">
+                      {Math.round((new Date(dataStats.dateRange.to).getTime() - new Date(dataStats.dateRange.from).getTime()) / 60000)} דקות
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">אין טווח זמן זמין</p>
+              )}
+            </div>
+          )}
+
+          {/* ── איכות נתונים ── */}
+          {activeTab === 'quality' && (
+            <div className="space-y-2">
+              <div className="text-xs font-semibold text-muted-foreground pb-1 border-b">איכות נתונים</div>
+              <DataQualityPanel />
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
@@ -322,8 +380,8 @@ const EngineeringWorkspace = () => {
   }
 
   return (
-    <div className="flex-1 p-6" dir="rtl">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4 mb-6">
+    <div className="flex-1 p-4" dir="rtl">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-4 mb-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">טיסות לניתוח</CardTitle>
@@ -349,7 +407,7 @@ const EngineeringWorkspace = () => {
           <CardContent>
             <div className="text-2xl font-bold">{dataStats.parameterCount}</div>
             <div className="text-xs text-muted-foreground truncate">
-              {topParameters.map((param) => DataAdapter.getParameterDisplayName(param)).join(' | ')}
+              {topParameters.join(' | ')}
             </div>
           </CardContent>
         </Card>

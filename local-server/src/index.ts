@@ -36,6 +36,8 @@ import { dossiersApiRouter } from './routes/dossiers-api';
 import { auditApiRouter } from './routes/audit-api';
 import { ingestionRouter } from './routes/ingestion';
 import { operationsFlightsRouter } from './routes/operations-flights';
+import { systemStateRouter } from './routes/system-state';
+import { evidenceApiRouter } from './routes/evidence-api';
 
 import { logger } from './utils/logger';
 import { authService } from './services/auth-service';
@@ -138,6 +140,8 @@ app.use('/api/dossiers', dossiersApiRouter);
 app.use('/api/audit',    auditApiRouter);
 app.use('/api/ingestion', ingestionRouter);
 app.use('/api/operations/flights', operationsFlightsRouter);
+app.use('/api/system', systemStateRouter);
+app.use('/api/evidence', evidenceApiRouter);
 
 // Legacy data proxy routes (API Key protected)
 app.use('/api/sources', sourcesRouter);

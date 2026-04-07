@@ -1,6 +1,6 @@
 /**
  * Finding Card Component
- * 
+ *
  * תצוגת ממצא עם:
  * - Severity S1-S4 מסומן בצבע
  * - Status Lifecycle עם מעברים חוקיים
@@ -76,12 +76,12 @@ interface FindingCardProps {
 // SEVERITY INDICATOR
 // =============================================================================
 
-const SeverityIndicator: React.FC<{ severity: SeverityLevel; size?: 'sm' | 'md' }> = ({ 
-  severity, 
-  size = 'md' 
+const SeverityIndicator: React.FC<{ severity: SeverityLevel; size?: 'sm' | 'md' }> = ({
+  severity,
+  size = 'md'
 }) => {
   const config = SEVERITY_CONFIG[severity];
-  
+
   const getIcon = () => {
     const iconClass = size === 'sm' ? 'h-4 w-4' : 'h-5 w-5';
     switch (severity) {
@@ -130,7 +130,7 @@ const SeverityIndicator: React.FC<{ severity: SeverityLevel; size?: 'sm' | 'md' 
 
 const StatusBadge: React.FC<{ status: FindingStatus }> = ({ status }) => {
   const config = FINDING_STATUS_CONFIG[status];
-  
+
   return (
     <Badge className={`${config.color} border-0`}>
       {config.labelHe}
@@ -142,9 +142,9 @@ const StatusBadge: React.FC<{ status: FindingStatus }> = ({ status }) => {
 // CONFIDENCE INDICATOR
 // =============================================================================
 
-const ConfidenceIndicator: React.FC<{ value: number; dataQuality: string }> = ({ 
-  value, 
-  dataQuality 
+const ConfidenceIndicator: React.FC<{ value: number; dataQuality: string }> = ({
+  value,
+  dataQuality
 }) => {
   const getColor = () => {
     if (value >= 80) return 'text-green-600';
@@ -192,7 +192,7 @@ const ConfidenceIndicator: React.FC<{ value: number; dataQuality: string }> = ({
 
 const DataSourceBadge: React.FC<{ type: 'measured' | 'reported' }> = ({ type }) => {
   const isMeasured = type === 'measured';
-  
+
   return (
     <TooltipProvider>
       <Tooltip>
@@ -212,7 +212,7 @@ const DataSourceBadge: React.FC<{ type: 'measured' | 'reported' }> = ({ type }) 
           </Badge>
         </TooltipTrigger>
         <TooltipContent side="bottom" dir="rtl">
-          {isMeasured 
+          {isMeasured
             ? 'נתון אוטומטי מקופסה שחורה / חיישנים'
             : 'נתון שהוזן ידנית'
           }
@@ -251,7 +251,7 @@ const StatusTransitionDialog: React.FC<{
             שינוי מ-<strong>{FINDING_STATUS_CONFIG[finding.status].labelHe}</strong> ל-<strong>{targetConfig.labelHe}</strong>
           </DialogDescription>
         </DialogHeader>
-        
+
         <div className="space-y-4 py-4">
           <div className="p-3 rounded-lg bg-muted">
             <p className="font-medium">{finding.titleHe}</p>
@@ -287,7 +287,7 @@ const StatusTransitionDialog: React.FC<{
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             ביטול
           </Button>
-          <Button 
+          <Button
             onClick={handleConfirm}
             disabled={targetConfig.requiresNote && !note.trim()}
           >
@@ -321,7 +321,7 @@ const CreateTaskDialog: React.FC<{
       dueType: 'before_sortie',
       dueTypeHe: 'לפני הגיחה הבאה',
     }, 'current_user');
-    
+
     onOpenChange(false);
   };
 
@@ -334,7 +334,7 @@ const CreateTaskDialog: React.FC<{
             צור משימה חדשה על בסיס הממצא
           </DialogDescription>
         </DialogHeader>
-        
+
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label htmlFor="task-title">כותרת המשימה</Label>
@@ -415,10 +415,10 @@ export const FindingCard: React.FC<FindingCardProps> = ({
   // =============================================================================
   // COMPACT VARIANT
   // =============================================================================
-  
+
   if (variant === 'compact') {
     return (
-      <div 
+      <div
         className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors cursor-pointer"
         onClick={() => onViewDetails?.(finding)}
         dir="rtl"
@@ -439,7 +439,7 @@ export const FindingCard: React.FC<FindingCardProps> = ({
   // =============================================================================
   // FULL VARIANT
   // =============================================================================
-  
+
   return (
     <>
       <Card className={`${SEVERITY_CONFIG[finding.severity].borderColor} border-r-4`} dir="rtl">
@@ -475,11 +475,13 @@ export const FindingCard: React.FC<FindingCardProps> = ({
 
           {/* Metadata Row */}
           <div className="flex items-center gap-4 text-sm">
-            <ConfidenceIndicator 
-              value={finding.confidence.value} 
-              dataQuality={finding.confidence.dataQuality} 
-            />
-            
+            {finding.confidence && (
+              <ConfidenceIndicator
+                value={finding.confidence.value}
+                dataQuality={finding.confidence.dataQuality}
+              />
+            )}
+
             {finding.assignedTo && (
               <div className="flex items-center gap-1 text-muted-foreground">
                 <User className="h-4 w-4" />
@@ -553,7 +555,7 @@ export const FindingCard: React.FC<FindingCardProps> = ({
                 </div>
               )}
 
-              {/* Evidence (placeholder) */}
+              {/* Evidence */}
               {finding.evidence.length > 0 && (
                 <div>
                   <h4 className="font-medium mb-2">ראיות ({finding.evidence.length})</h4>
@@ -584,7 +586,7 @@ export const FindingCard: React.FC<FindingCardProps> = ({
                     הכר
                   </Button>
                 )}
-                
+
                 {allowedTransitions.filter(s => s !== 'acknowledged').map((newStatus) => (
                   <Button
                     key={newStatus}
@@ -603,18 +605,18 @@ export const FindingCard: React.FC<FindingCardProps> = ({
 
               {/* Additional Actions */}
               <div className="flex items-center gap-2">
-                <Button 
-                  size="sm" 
+                <Button
+                  size="sm"
                   variant="outline"
                   onClick={() => setCreateTaskDialogOpen(true)}
                 >
                   <Plus className="h-4 w-4 ml-2" />
                   צור משימה
                 </Button>
-                
+
                 {onViewDetails && (
-                  <Button 
-                    size="sm" 
+                  <Button
+                    size="sm"
                     variant="ghost"
                     onClick={() => onViewDetails(finding)}
                   >

@@ -112,10 +112,11 @@ function runMigrations(db: Db): void {
   `);
 
   const migrations: { name: string; sql: string }[] = [
-    { name: '001_initial_schema',      sql: MIGRATION_001 },
-    { name: '002_seed_default_users',  sql: MIGRATION_002_SEED_USERS },
-    { name: '003_seed_baseline_rules', sql: MIGRATION_003_SEED_RULES },
-    { name: '004_add_flights_schema',  sql: MIGRATION_004_FLIGHTS_SCHEMA },
+    { name: '001_initial_schema',          sql: MIGRATION_001 },
+    { name: '002_seed_default_users',      sql: MIGRATION_002_SEED_USERS },
+    { name: '003_seed_baseline_rules',     sql: MIGRATION_003_SEED_RULES },
+    { name: '004_add_flights_schema',      sql: MIGRATION_004_FLIGHTS_SCHEMA },
+    { name: '005_add_operational_tables',  sql: MIGRATION_005_OPERATIONAL_TABLES },
   ];
 
   for (const m of migrations) {
@@ -356,6 +357,124 @@ CREATE INDEX IF NOT EXISTS idx_flights_tail_number ON flights(tail_number);
 CREATE INDEX IF NOT EXISTS idx_flights_start_time ON flights(start_time);
 CREATE INDEX IF NOT EXISTS idx_telemetry_flight_id ON telemetry_records(flight_id);
 CREATE INDEX IF NOT EXISTS idx_telemetry_timestamp ON telemetry_records(timestamp);
+`;
+
+// ---------------------------------------------------------------------------
+// Migration 005 — Operational Tables (evidence, rule results, aircraft, system state)
+// ---------------------------------------------------------------------------
+
+const MIGRATION_005_OPERATIONAL_TABLES = `
+
+-- Evidence items persisted server-side (replaces localStorage evidence)
+CREATE TABLE IF NOT EXISTS evidence_items (
+  id              TEXT PRIMARY KEY,
+  finding_id      TEXT,
+  dossier_id      TEXT,
+  flight_id       TEXT,
+  sortie_id       TEXT,
+  created_by      TEXT NOT NULL,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+
+  -- What kind of evidence
+  evidence_type   TEXT NOT NULL DEFAULT 'parameter_selection',
+  title           TEXT NOT NULL,
+  title_he        TEXT,
+  description     TEXT,
+  description_he  TEXT,
+  source_type     TEXT NOT NULL DEFAULT 'measured',
+  source_system   TEXT,
+
+  -- Content (JSON payload varies by type)
+  content         TEXT NOT NULL DEFAULT '{}',
+
+  -- For parameter charts
+  parameter_name  TEXT,
+  time_range_from TEXT,
+  time_range_to   TEXT,
+  value_min       REAL,
+  value_max       REAL,
+  value_mean      REAL,
+
+  relevance       TEXT,
+  relevance_he    TEXT,
+  is_pinned       INTEGER NOT NULL DEFAULT 0
+);
+
+-- Rule execution results — tracks which rules ran, what they found
+CREATE TABLE IF NOT EXISTS rule_execution_results (
+  id              TEXT PRIMARY KEY,
+  rule_id         TEXT NOT NULL,
+  flight_id       TEXT,
+  sortie_id       TEXT,
+  aircraft_id     TEXT,
+  batch_id        TEXT,
+  executed_at     TEXT NOT NULL DEFAULT (datetime('now')),
+
+  -- Did the rule run?
+  did_run         INTEGER NOT NULL DEFAULT 1,
+  skip_reason     TEXT,               -- Why it didn't run (missing parameter, etc.)
+
+  -- Did it find a violation?
+  violated        INTEGER NOT NULL DEFAULT 0,
+  violation_value REAL,               -- The actual value that triggered the violation
+  threshold_value REAL,               -- The threshold that was exceeded/not met
+  finding_id      TEXT,               -- Link to the finding created (if any)
+
+  -- Data quality at time of evaluation
+  parameter_present  INTEGER NOT NULL DEFAULT 1,
+  data_quality       TEXT DEFAULT 'complete'  -- 'complete', 'partial', 'missing'
+);
+
+-- Aircraft — canonical list of aircraft known to the system
+CREATE TABLE IF NOT EXISTS aircraft (
+  id              TEXT PRIMARY KEY,
+  tail_number     TEXT UNIQUE NOT NULL,
+  type            TEXT NOT NULL DEFAULT 'F-16',
+  squadron        TEXT,
+  is_active       INTEGER NOT NULL DEFAULT 1,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- System state — persistent key/value store for operational state
+-- Emergency mode, system version, feature flags, etc.
+CREATE TABLE IF NOT EXISTS system_state (
+  key         TEXT PRIMARY KEY,
+  value       TEXT NOT NULL,
+  updated_by  TEXT,
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  note        TEXT
+);
+
+-- Seed default system state
+INSERT OR IGNORE INTO system_state (key, value, updated_by, note)
+VALUES ('emergency_mode', '{"active":false,"reason":null,"activatedBy":null,"activatedAt":null}', 'system', 'Emergency mode initial state');
+
+-- Fleet readiness snapshot — precomputed, updated on finding/task change
+CREATE TABLE IF NOT EXISTS fleet_readiness_snapshot (
+  tail_number       TEXT PRIMARY KEY,
+  maintenance_status TEXT NOT NULL DEFAULT 'unknown',
+  open_s1_count     INTEGER NOT NULL DEFAULT 0,
+  open_s2_count     INTEGER NOT NULL DEFAULT 0,
+  open_s3_count     INTEGER NOT NULL DEFAULT 0,
+  open_task_count   INTEGER NOT NULL DEFAULT 0,
+  last_sortie_date  TEXT,
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_findings_status     ON findings(status);
+CREATE INDEX IF NOT EXISTS idx_findings_aircraft   ON findings(aircraft_id);
+CREATE INDEX IF NOT EXISTS idx_findings_severity   ON findings(severity);
+CREATE INDEX IF NOT EXISTS idx_findings_sortie     ON findings(flight_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_assigned      ON tasks(assigned_to);
+CREATE INDEX IF NOT EXISTS idx_tasks_status        ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_audit_entity        ON audit_log(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_audit_timestamp     ON audit_log(timestamp);
+CREATE INDEX IF NOT EXISTS idx_evidence_finding    ON evidence_items(finding_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_flight     ON evidence_items(flight_id);
+CREATE INDEX IF NOT EXISTS idx_rule_results_flight ON rule_execution_results(flight_id);
+CREATE INDEX IF NOT EXISTS idx_rule_results_rule   ON rule_execution_results(rule_id);
 `;
 
 // ---------------------------------------------------------------------------

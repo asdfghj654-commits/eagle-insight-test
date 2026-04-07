@@ -16,7 +16,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import {
   Dialog,
@@ -44,8 +43,9 @@ import {
   Layers,
 } from 'lucide-react';
 import { useFlightDossier } from '@/contexts/FlightDossierContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { SEVERITY_CONFIG, SeverityLevel, UserRole } from '@/types/core';
-import { useRole } from '@/components/dashboard/RoleProvider';
+import { AiPanel } from '@/components/ai/AiPanel';
 
 // =============================================================================
 // FLEET STATUS CARD
@@ -78,20 +78,9 @@ const FleetStatusCard: React.FC = () => {
               <CardDescription>Fleet Readiness Status</CardDescription>
             </div>
           </div>
-          <div className="text-left">
-            <div className={`text-4xl font-bold ${getStatusColor()}`}>
-              {readiness.readinessPercentage}%
-            </div>
-            <div className="text-sm text-muted-foreground">מוכנות</div>
-          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Progress 
-          value={readiness.readinessPercentage} 
-          className="h-3"
-        />
-        
         <div className="grid grid-cols-4 gap-4">
           <div className="text-center p-3 rounded-lg bg-muted/50">
             <div className="text-2xl font-bold">{readiness.totalAircraft}</div>
@@ -127,12 +116,12 @@ const FleetStatusCard: React.FC = () => {
 
 const EmergencyModeBanner: React.FC = () => {
   const { emergencyMode, setEmergencyMode } = useFlightDossier();
-  const { currentUser } = useRole();
+  const { user } = useAuth();
 
   if (!emergencyMode) return null;
 
   const handleDeactivate = () => {
-    const result = setEmergencyMode(false, 'ביטול ידני של מצב חירום', currentUser.id, 'commander');
+    const result = setEmergencyMode(false, 'ביטול ידני של מצב חירום', user?.id || '', 'commander');
     if (!result.success) {
       alert(result.errorHe || result.error);
     }
@@ -290,14 +279,14 @@ const BlockersCard: React.FC = () => {
 
 const RiskQueueCard: React.FC = () => {
   const { getRiskQueue, acknowledgeFinding } = useFlightDossier();
-  const { currentUser } = useRole();
+  const { user } = useAuth();
   const riskQueue = getRiskQueue();
 
   // Filter to show top 5
   const topRisks = riskQueue.slice(0, 5);
 
   const handleAcknowledge = (findingId: string) => {
-    const result = acknowledgeFinding(findingId, currentUser.id, currentUser.role as UserRole);
+    const result = acknowledgeFinding(findingId, user?.id || '', (user?.role || 'commander') as UserRole);
     if (!result.success) {
       alert(result.errorHe || result.error);
     }
@@ -505,7 +494,7 @@ const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
 
 export const CommanderDashboard: React.FC = () => {
   const { emergencyMode, setEmergencyMode, isInitialized } = useFlightDossier();
-  const { currentUser } = useRole();
+  const { user } = useAuth();
   const [emergencyDialogOpen, setEmergencyDialogOpen] = useState(false);
   const [emergencyReasonInput, setEmergencyReasonInput] = useState('');
 
@@ -514,7 +503,7 @@ export const CommanderDashboard: React.FC = () => {
       alert('נדרשת סיבה להפעלת מצב חירום');
       return;
     }
-    const result = setEmergencyMode(true, emergencyReasonInput, currentUser.id, 'commander');
+    const result = setEmergencyMode(true, emergencyReasonInput, user?.id || '', 'commander');
     if (result.success) {
       setEmergencyDialogOpen(false);
       setEmergencyReasonInput('');
@@ -543,7 +532,7 @@ export const CommanderDashboard: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">דשבורד מפקד</h2>
-          <p className="text-muted-foreground">תמונת מצב כשירות צי - {new Date().toLocaleDateString('he-IL')}</p>
+          <p className="text-muted-foreground">תמונת מצב כשירות צי</p>
         </div>
         <div className="flex items-center gap-2">
           {!emergencyMode && (
@@ -574,6 +563,15 @@ export const CommanderDashboard: React.FC = () => {
         
         {/* Aircraft Grid - spans 2 columns */}
         <AircraftStatusGrid />
+
+        {/* AI Fleet Risk Summary - spans full width */}
+        <div className="col-span-1 md:col-span-2 lg:col-span-4">
+          <AiPanel
+            slot="fleet_summary"
+            roleScope="commander"
+            defaultOpen={false}
+          />
+        </div>
       </div>
 
       {/* Emergency Mode Dialog */}

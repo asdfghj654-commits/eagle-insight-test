@@ -20,11 +20,17 @@
       "Bash(grep -v \"Use \\\\`node\")",
       "Bash(cmd.exe:*)",
       "Bash(powershell -Command \"Stop-Process -Id 23164 -Force\")",
-      "Bash(powershell -Command \"Stop-Process -Name node -Force -ErrorAction SilentlyContinue\")"
+      "Bash(powershell -Command \"Stop-Process -Name node -Force -ErrorAction SilentlyContinue\")",
+      "Bash(npx ai-agent-skills:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(npm run:*)",
+      "Bash(dir Q:\\\\CODE EAGLE INSIGHT\\\\eagle-insight-TIER-2-CLEAR2-master\\\\roll back UI UX:*)",
+      "Bash(ls .env*)",
+      "Bash(ls local-server/.env*)"
     ]
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "claude-flow"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }

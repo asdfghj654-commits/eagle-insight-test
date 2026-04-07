@@ -143,6 +143,79 @@ export const dossiersApi = {
   syncStatus: (id: string) => apiClient.post<{ dossier: DossierDto }>(`/api/dossiers/${id}/sync-status`),
 };
 
+export interface EmergencyModeState {
+  active: boolean;
+  reason: string | null;
+  activatedBy: string | null;
+  activatedAt: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Evidence types and API
+// ---------------------------------------------------------------------------
+
+export interface EvidenceItemDto {
+  id: string;
+  findingId?: string;
+  dossierId?: string;
+  flightId?: string;
+  sortieId?: string;
+  createdBy: string;
+  createdAt: string;
+  evidenceType: string;
+  title: string;
+  titleHe?: string;
+  description?: string;
+  sourceType: string;
+  content: Record<string, unknown>;
+  parameterName?: string;
+  timeRangeFrom?: string;
+  timeRangeTo?: string;
+  valueMin?: number;
+  valueMax?: number;
+  valueMean?: number;
+  relevance?: string;
+  relevanceHe?: string;
+  isPinned: boolean;
+}
+
+export interface EvidenceListDto {
+  items: EvidenceItemDto[];
+  count: number;
+}
+
+export const evidenceApi = {
+  list: (params?: {
+    findingId?: string;
+    dossierId?: string;
+    flightId?: string;
+    sortieId?: string;
+    isPinned?: boolean;
+    limit?: number;
+  }) => apiClient.get<EvidenceListDto>(buildQuery('/api/evidence', params)),
+
+  get: (id: string) => apiClient.get<{ item: EvidenceItemDto }>(`/api/evidence/${id}`),
+
+  create: (params: Omit<EvidenceItemDto, 'id' | 'createdBy' | 'createdAt' | 'isPinned'> & { isPinned?: boolean }) =>
+    apiClient.post<{ item: EvidenceItemDto }>('/api/evidence', params),
+
+  pin: (id: string, isPinned: boolean) =>
+    apiClient.patch<{ item: EvidenceItemDto }>(`/api/evidence/${id}/pin`, { isPinned }),
+
+  delete: (id: string) =>
+    apiClient.delete<{ success: boolean }>(`/api/evidence/${id}`),
+};
+
+export const systemApi = {
+  getState: () =>
+    apiClient.get<{ emergencyMode: EmergencyModeState }>('/api/system/state'),
+  setEmergencyMode: (active: boolean, reason?: string) =>
+    apiClient.post<{ success: boolean; emergencyMode: EmergencyModeState }>(
+      '/api/system/emergency',
+      { active, reason },
+    ),
+};
+
 export const auditApi = {
   list: (limit?: number, offset?: number) =>
     apiClient.get<AuditListDto>(buildQuery('/api/audit', { limit, offset })),

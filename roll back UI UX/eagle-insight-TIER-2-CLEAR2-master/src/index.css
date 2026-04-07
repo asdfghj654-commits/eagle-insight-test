@@ -1,0 +1,170 @@
+/* 
+ * מגן דוד לאחזקה - On-Premise Deployment
+ * No external font dependencies - using system fonts for air-gapped environments
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* System fonts fallback for on-premise deployment */
+@layer base {
+  html {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'Liberation Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  }
+}
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Military/Aviation Theme */
+    --background: 210 15% 97%;
+    --foreground: 220 15% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 15% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 15% 15%;
+
+    --primary: 214 85% 25%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 25% 90%;
+    --secondary-foreground: 220 15% 25%;
+
+    --muted: 210 25% 92%;
+    --muted-foreground: 215 15% 45%;
+
+    --accent: 214 85% 35%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 358 85% 50%;
+    --destructive-foreground: 210 40% 98%;
+
+    --warning: 35 85% 50%;
+    --warning-foreground: 210 40% 98%;
+
+    --success: 142 85% 40%;
+    --success-foreground: 210 40% 98%;
+
+    --border: 214 25% 88%;
+    --input: 214 25% 92%;
+    --ring: 214 85% 25%;
+
+    --radius: 0.375rem;
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 220 25% 8%;
+    --foreground: 210 25% 92%;
+
+    --card: 220 25% 10%;
+    --card-foreground: 210 25% 92%;
+
+    --popover: 220 25% 10%;
+    --popover-foreground: 210 25% 92%;
+
+    --primary: 214 85% 55%;
+    --primary-foreground: 220 25% 8%;
+
+    --secondary: 220 15% 18%;
+    --secondary-foreground: 210 25% 92%;
+
+    --muted: 220 15% 15%;
+    --muted-foreground: 215 15% 65%;
+
+    --accent: 214 85% 45%;
+    --accent-foreground: 220 25% 8%;
+
+    --destructive: 358 85% 55%;
+    --destructive-foreground: 220 25% 8%;
+
+    --warning: 35 85% 55%;
+    --warning-foreground: 220 25% 8%;
+
+    --success: 142 85% 45%;
+    --success-foreground: 220 25% 8%;
+
+    --border: 220 15% 20%;
+    --input: 220 15% 18%;
+    --ring: 214 85% 55%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-inter;
+    font-feature-settings: "cv11", "ss01";
+    font-variant-numeric: tabular-nums;
+  }
+
+  html[dir="rtl"] {
+    font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  }
+
+  /* Aviation/Military styled components */
+  .system-card {
+    @apply bg-card border border-border rounded-lg shadow-sm;
+    background: linear-gradient(145deg, hsl(var(--card)), hsl(var(--muted)));
+  }
+
+  .status-indicator {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium;
+  }
+
+  .military-grid {
+    @apply grid gap-4;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  }
+}
+
+@layer components {
+  .rtl-text {
+    @apply text-right;
+    font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  }
+
+  .system-badge {
+    @apply inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium;
+  }
+
+  .flight-card {
+    @apply bg-card border border-border rounded-lg p-4 space-y-3 transition-all duration-200;
+  }
+
+  .flight-card:hover {
+    @apply shadow-md border-primary/30;
+  }
+}

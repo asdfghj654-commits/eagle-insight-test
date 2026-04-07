@@ -213,18 +213,18 @@ export interface FlightDossier {
   pilotId?: string; // Locked for privacy
   pilotNameLocked: boolean;
   
-  // Summary
-  summary: FlightSummary;
-  
+  // Summary — derived from findings, may not be populated for lightweight list DTOs
+  summary?: FlightSummary;
+
   // Linked Objects
   findings: Finding[];
   evidence: Evidence[];
-  maintenanceContext: MaintenanceContext;
+  maintenanceContext?: MaintenanceContext;
   tasks: Task[];
-  
+
   // Status
   status: DossierStatus;
-  readinessImpact: ReadinessImpact;
+  readinessImpact?: ReadinessImpact;
   
   // Audit
   createdAt: string;
@@ -243,7 +243,7 @@ export interface FlightSummary {
   recommendedActions: string[];
   nextSortieStatus: 'go' | 'conditional' | 'no_go';
   nextSortieStatusHe: string;
-  confidenceScore: ConfidenceScore;
+  confidenceScore?: ConfidenceScore; // only present when AI or rule engine has computed it
 }
 
 export interface ReadinessImpact {
@@ -264,7 +264,7 @@ export interface Finding {
   
   // Classification
   severity: SeverityLevel;
-  confidence: ConfidenceScore;
+  confidence?: ConfidenceScore; // only present when computed — never hardcoded
   category: FindingCategory;
   
   // Content

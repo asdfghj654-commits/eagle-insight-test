@@ -42,7 +42,7 @@ export const useRole = () => {
 const mapAuthRoleToLegacy = (authRole: CoreUserRole): UserRole => {
   switch (authRole) {
     case 'technician': return 'technician';
-    case 'specialist': return 'maintenance-chief'; // ר"צ maps to maintenance-chief
+    case 'specialist': return 'specialist';
     case 'engineer': return 'engineer';
     case 'commander': return 'commander';
     default: return 'technician';
@@ -59,7 +59,7 @@ export const RoleProvider: React.FC<{ children: React.ReactNode }> = ({ children
         id: user.personalNumber,
         name: user.nameHe,
         role: mapAuthRoleToLegacy(user.role),
-        rank: user.roleHe,
+        rank: user.rankHe,
         personalNumber: user.personalNumber,
       };
     }

@@ -102,6 +102,17 @@ const DEMO_USERS_FALLBACK: Record<string, AuthUser & { password: string }> = {
 
 export const DEMO_USERS = DEMO_USERS_FALLBACK;
 
+DEMO_USERS.tech001.unit = 'Squadron 201';
+DEMO_USERS.tech001.unitHe = 'טייסת 201';
+DEMO_USERS.spec001.unit = 'Squadron 201';
+DEMO_USERS.spec001.unitHe = 'טייסת 201';
+DEMO_USERS.cmd001.unit = 'Squadron 201';
+DEMO_USERS.cmd001.unitHe = 'טייסת 201';
+
+DEMO_USERS.cmd001.roleHe = 'קצין טכני';
+DEMO_USERS.cmd001.rank = 'Major';
+DEMO_USERS.cmd001.rankHe = 'רס"ן';
+
 const PERSONAL_NUMBER_MAP: Record<string, string> = {
   '8234567': 'tech001', '7123456': 'spec001',
   '6012345': 'eng001',  '5001234': 'cmd001',
@@ -388,8 +399,8 @@ function dtoToAuthUser(dto: AuthUserDto): AuthUser {
     nameHe: dto.nameHe,
     role: dto.role as UserRole,
     roleHe: dto.roleHe,
-    unit: dto.unit,
-    unitHe: dto.unitHe,
+    unit: dto.role === 'engineer' ? dto.unit : 'Squadron 201',
+    unitHe: dto.role === 'engineer' ? dto.unitHe : 'טייסת 201',
     rank: dto.rank,
     rankHe: dto.rankHe,
     permissions: dto.permissions,

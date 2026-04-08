@@ -415,7 +415,7 @@ export const EvidenceTab: React.FC = () => {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center justify-center gap-2 text-center">
             <FileText className="h-5 w-5" />
             ניהול ראיות
           </CardTitle>
@@ -480,7 +480,7 @@ export const EvidenceTab: React.FC = () => {
       <Separator />
 
       <Tabs defaultValue="list">
-        <TabsList className="grid grid-cols-2 w-48">
+        <TabsList className="grid grid-cols-2 w-48 mx-auto">
           <TabsTrigger value="list">רשימה</TabsTrigger>
           <TabsTrigger
             value="compare"

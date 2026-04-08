@@ -1,5 +1,5 @@
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertTriangle, Plane, Wrench, Activity, Clock, AlertCircle } from "lucide-react";
@@ -16,7 +16,9 @@ import { useRole } from "@/components/dashboard/RoleProvider";
 import { CSVUpload } from "@/components/CSVUpload";
 import { useDashboardData } from "@/hooks/useDashboardData";
 import { Button } from "@/components/ui/button";
-import { useNavigate } from "react-router-dom";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useLocation, useNavigate } from "react-router-dom";
 import { DailyMaintenanceWorkload } from "@/components/dashboard/DailyMaintenanceWorkload";
 import { SquadronStatusCard } from "@/components/dashboard/SquadronStatusCard";
 import { CommanderRecommendations } from "@/components/dashboard/CommanderRecommendations";
@@ -32,78 +34,80 @@ import { AIPredictions } from "@/components/dashboard/AIPredictions";
 import { TechnicianMaintenanceView } from "@/components/dashboard/TechnicianMaintenanceView";
 import { FleetAnalysisTab } from "@/components/dashboard/FleetAnalysisTab";
 import { AiPanel } from "@/components/ai/AiPanel";
+import { useCSVData } from "@/contexts/CSVDataContext";
 
-const DashboardHeader = () => {
-  const { currentUser } = useRole();
+const DashboardHeader = () => null;
+
+const RoleVisibleAiPanel = ({ role }: { role: string }) => {
+  const slot =
+    role === "commander"
+      ? "fleet_summary"
+      : role === "specialist"
+      ? "fleet_summary"
+      : "investigation_assist";
+
+  const roleScope =
+    role === "technician"
+      ? "technician"
+      : role === "specialist"
+      ? "specialist"
+      : role === "commander"
+      ? "commander"
+      : "engineer";
 
   return (
-    <header className="border-b bg-card">
-      <div className="px-6 py-4">
-        <div className="flex items-center justify-between" dir="rtl">
-          {/* Left Section - Logos & System Title */}
-          <div className="flex items-center gap-6 justify-start">
-            <div className="flex items-center gap-4">
-              {/* Israeli Air Force Logo - closest to left edge */}
-              <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-blue-800 rounded-lg flex items-center justify-center shadow-lg">
-                <div className="text-white text-center">
-                  <div className="text-lg font-bold">✈</div>
-                  <div className="text-xs">IAF</div>
-                </div>
-              </div>
-              {/* Equipment Squadron Logo */}
-              <div className="w-14 h-14 bg-gradient-to-br from-green-600 to-green-800 rounded-lg flex items-center justify-center shadow-lg">
-                <div className="text-white text-center">
-                  <div className="text-lg font-bold">⚙</div>
-                  <div className="text-xs">ציוד</div>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Plane className="h-8 w-8 text-primary" />
-              <div className="text-right">
-                <h1 className="text-2xl font-bold text-right">מערכת תובנות אחזקה F-16</h1>
-                <p className="text-sm text-muted-foreground text-right">ניתוח נתוני קופסה שחורה ותובנות אחזקה</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Right Section - User & Time */}
-          <div className="flex items-center gap-4 justify-end">
-            <div className="text-right">
-              <p className="text-sm font-medium">שלום {currentUser.name} ({currentUser.id})</p>
-              <p className="text-xs text-muted-foreground">{currentUser.rank}</p>
-            </div>
-            <div className="text-center border-r pr-4">
-              <p className="text-lg font-mono font-bold" suppressHydrationWarning>
-                {new Date().toLocaleTimeString('he-IL', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  second: '2-digit'
-                })}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {new Date().toLocaleDateString('he-IL')}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </header>
+    <div className="rounded-xl border border-border/70 bg-card/80 p-3 shadow-sm">
+      <AiPanel slot={slot} roleScope={roleScope} defaultOpen={false} />
+    </div>
   );
 };
 
 const DashboardContent = () => {
   const { currentUser } = useRole();
   const navigate = useNavigate();
+  const location = useLocation();
   const { insights, dashboardStats, hasData } = useDashboardData();
+  const { rules } = useCSVData();
+
+  const recentRuleUpdates = useMemo(() => rules
+    .filter((rule) => rule.status === "approved" && rule.updatedAt)
+    .sort((left, right) => new Date(right.updatedAt || 0).getTime() - new Date(left.updatedAt || 0).getTime())
+    .slice(0, 3), [rules]);
+
+  const getTabForPath = () => {
+    switch (location.pathname) {
+      case '/tech/my-tasks':
+        return 'active';
+      case '/lead/fleet':
+        return currentUser.role === 'specialist' || currentUser.role === 'engineer' ? 'fleet' : 'alerts';
+      case '/engineer/dashboard':
+      case '/engineer/rules':
+        return 'rules';
+      default:
+        return 'alerts';
+    }
+  };
+
+  const [activeTab, setActiveTab] = useState(getTabForPath);
+
+  useEffect(() => {
+    setActiveTab(getTabForPath());
+  }, [location.pathname, currentUser.role]);
 
   return (
     <div className="min-h-screen bg-background">
       <DashboardHeader />
 
       {/* Main Dashboard */}
-      <main className="container mx-auto px-4 py-6 space-y-6 font-plex" dir="rtl">
+      <main className="container mx-auto px-4 py-6 space-y-6" dir="rtl">
+        <div className="hidden rounded-lg border border-border bg-muted/30 p-4">
+          <div className="hidden">
+            חשוב לזכור: מערכת זו היא כלי תומך בלבד ואינה מחליפה החלטה מקצועית. כל תובנה חייבת להיבדק על ידי איש מקצוע מוסמך לפני ביצוע פעולה כלשהי.
+          </div>
+        </div>
+
         {/* Portal Access */}
+        {currentUser.role === 'engineer' && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -132,17 +136,53 @@ const DashboardContent = () => {
                 תור אישורים
               </Button>
             </div>
-            <CSVUpload onUploadComplete={() => {
-              console.log('CSV uploaded - dashboard will auto-update with real insights');
-            }} />
+            <CSVUpload
+              navigateToAfterUpload="/portal/data-research"
+              onUploadComplete={() => {
+                console.log('CSV uploaded - redirecting to data research');
+              }}
+            />
           </CardContent>
         </Card>
+        )}
 
         {/* Role Selector for Demo */}
         <RoleSelector />
 
         {/* System Explanation */}
         <SystemExplanation />
+
+        {/* AI Assistant - visible high in the role workflow */}
+        <RoleVisibleAiPanel role={currentUser.role} />
+
+        {recentRuleUpdates.length > 0 && (
+          <Card className="border-warning/30 bg-warning/10">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-right">
+                <AlertTriangle className="h-5 w-5 text-amber-700" />
+                עדכוני כללים מאושרים
+              </CardTitle>
+              <CardDescription className="text-right">
+                תפקידים רואים כאן את עדכוני הכללים האחרונים שאושרו או שונו לאחר אישור.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {recentRuleUpdates.map((rule) => (
+                <div key={rule.id} className="flex items-start justify-between gap-3 rounded-lg border border-warning/20 bg-background/80 p-3" dir="rtl">
+                  <div className="space-y-1 text-right">
+                    <div className="font-medium">{rule.name}</div>
+                    <div className="text-sm text-muted-foreground">{rule.updateSummary || rule.description}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {rule.updatedBy ? `${rule.updatedBy} | ` : ""}
+                      {rule.updatedAt ? new Date(rule.updatedAt).toLocaleString("he-IL") : ""}
+                    </div>
+                  </div>
+                  <Badge variant="outline">עדכון כלל</Badge>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Role-based Dashboard */}
         {currentUser.role === 'technician' ? (
@@ -209,25 +249,8 @@ const DashboardContent = () => {
         )}
 
         {/* AI Assistant — role-scoped */}
-        <AiPanel
-          slot={
-            currentUser.role === 'commander'
-              ? 'fleet_summary'
-              : currentUser.role === 'specialist'
-              ? 'fleet_summary'
-              : 'investigation_assist'
-          }
-          roleScope={
-            currentUser.role === 'technician' ? 'technician'
-            : currentUser.role === 'specialist' ? 'specialist'
-            : currentUser.role === 'commander' ? 'commander'
-            : 'engineer'
-          }
-          defaultOpen={false}
-        />
-
-        <Tabs defaultValue="alerts" className="w-full">
-          <TabsList className="grid w-full grid-cols-8">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="flex w-full h-auto flex-wrap gap-px overflow-x-auto justify-start">
             <TabsTrigger value="alerts">התרעות אחזקה</TabsTrigger>
             <TabsTrigger value="active">תיקים מושלמים</TabsTrigger>
             <TabsTrigger value="recommendations">המלצות טכניות</TabsTrigger>
@@ -236,7 +259,7 @@ const DashboardContent = () => {
             <TabsTrigger value="history">היסטוריה וניתוח</TabsTrigger>
             <TabsTrigger value="daily">סיכום יומי</TabsTrigger>
         {(currentUser.role === 'maintenance-chief' || currentUser.role === 'specialist' || currentUser.role === 'engineer') && (
-          <TabsTrigger value="fleet">ניתוח צי</TabsTrigger>
+          <TabsTrigger value="fleet">ניתוח טייסת</TabsTrigger>
         )}
           </TabsList>
 
@@ -275,14 +298,19 @@ const DashboardContent = () => {
                 <>
                   <div className="grid gap-4 lg:grid-cols-2">
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-right">בחר מטוס (מספר זנב):</label>
-                      <select className="w-full p-2 border rounded-lg bg-background text-right">
-                        <option value="">בחר מטוס...</option>
-                      </select>
+                      <label className="text-sm font-medium">בחר מטוס (מספר זנב):</label>
+                      <Select>
+                        <SelectTrigger>
+                          <SelectValue placeholder="בחר מטוס..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_placeholder" disabled>בחר מטוס...</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-right">תאריך טיסה:</label>
-                      <input type="date" className="w-full p-2 border rounded-lg bg-background text-right" />
+                      <label className="text-sm font-medium">תאריך טיסה:</label>
+                      <Input type="date" />
                     </div>
                   </div>
                   <div className="bg-card border rounded-lg p-4">

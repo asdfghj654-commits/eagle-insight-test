@@ -13,26 +13,8 @@ import {
 import { BarChart3, Box, AlertTriangle, Target, TrendingUp, GitBranch, Search, MoreVertical } from 'lucide-react';
 import { useCSVData } from '@/contexts/CSVDataContext';
 import { DataAdapter } from '@/lib/data-adapter';
+import { computeLinearRegression } from '@/lib/math-utils';
 import { ChartToolbar, HelpTooltip, ProgressCell, FullscreenOverlay, exportCSV, FloatingSearchPopup, ColumnContextMenu, useColumnConfigs } from './ChartToolbar';
-
-// ── Regression helpers ─────────────────────────────────────────────
-function computeLinearRegression(pts: { x: number; y: number }[]) {
-  const n = pts.length;
-  if (n < 2) return null;
-  let sx = 0, sy = 0, sxy = 0, sxx = 0;
-  for (const { x, y } of pts) { sx += x; sy += y; sxy += x * y; sxx += x * x; }
-  const denom = n * sxx - sx * sx;
-  const slope = denom ? (n * sxy - sx * sy) / denom : 0;
-  const intercept = (sy - slope * sx) / n;
-  const residuals = pts.map(({ x, y }) => y - (slope * x + intercept));
-  const meanR = residuals.reduce((a, b) => a + b, 0) / n;
-  const stdDev = Math.sqrt(residuals.reduce((a, r) => a + (r - meanR) ** 2, 0) / n);
-  const ssTot = pts.reduce((a, { y }) => a + (y - sy / n) ** 2, 0);
-  const ssRes = residuals.reduce((a, r) => a + r ** 2, 0);
-  const rSquared = ssTot ? 1 - ssRes / ssTot : 0;
-  const r = Math.sign(slope) * Math.sqrt(Math.max(0, rSquared));
-  return { slope, intercept, stdDev, rSquared, r, residuals };
-}
 
 function buildHistogram(values: number[], bins: number) {
   if (values.length === 0) return [];
@@ -86,39 +68,17 @@ export const DistributionsTab: React.FC = () => {
 
   const phases = useMemo(() => Array.from(new Set(rawData.map(r => r.phase))), [rawData]);
 
-  // Column configs for histogram table
-  const histColDefs = [{ key: 'range', label: 'טווח' }, { key: 'count', label: 'כמות' }];
+  // Column configs for histogram table (stable ref)
+  const histColDefs = useMemo(() => [{ key: 'range', label: 'טווח' }, { key: 'count', label: 'כמות' }], []);
   const histColCfg = useColumnConfigs(histColDefs);
 
-  // Column configs for joint table (labels depend on params, computed inline)
+  // Column configs for joint table (labels depend on params)
   const jointColDefs = useMemo(() => [
     { key: 'x', label: DataAdapter.getParameterDisplayName(xParam) || 'X' },
     { key: 'y', label: DataAdapter.getParameterDisplayName(yParam) || 'Y' },
     { key: 'outlier', label: 'חריג?' },
   ], [xParam, yParam]);
   const jointColCfg = useColumnConfigs(jointColDefs);
-
-  // Histogram search match indices
-  const histMatchIndices = useMemo(() => {
-    if (!histSearch.trim() || !showHistSearch) return [];
-    const q = histSearch.toLowerCase();
-    return histogramData.reduce<number[]>((acc, b, i) => {
-      if (b.range.toLowerCase().includes(q)) acc.push(i);
-      return acc;
-    }, []);
-  }, [histogramData, histSearch, showHistSearch]);
-
-  const navigateHistMatch = (dir: 'up' | 'down') => {
-    if (histMatchIndices.length === 0) return;
-    setHistCurrentMatch(prev => {
-      const next = dir === 'down'
-        ? (prev + 1) % histMatchIndices.length
-        : (prev - 1 + histMatchIndices.length) % histMatchIndices.length;
-      const row = histTableRef.current?.querySelector(`[data-row="${histMatchIndices[next]}"]`);
-      row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      return next;
-    });
-  };
 
   const filteredRaw = useMemo(() =>
     rawData.filter(r =>
@@ -160,6 +120,28 @@ export const DistributionsTab: React.FC = () => {
     const outliers = values.filter(v => v < lowerFence || v > upperFence);
     return { count: n, mean, std, min: values[0], max: values[n - 1], median: values[Math.floor(n * 0.5)], outliers: outliers.length, outlierPercentage: (outliers.length / n) * 100, lowerFence, upperFence };
   }, [parameterData]);
+
+  // Histogram search match indices (must come AFTER histogramData)
+  const histMatchIndices = useMemo(() => {
+    if (!histSearch.trim() || !showHistSearch) return [];
+    const q = histSearch.toLowerCase();
+    return histogramData.reduce<number[]>((acc, b, i) => {
+      if (b.range.toLowerCase().includes(q)) acc.push(i);
+      return acc;
+    }, []);
+  }, [histogramData, histSearch, showHistSearch]);
+
+  const navigateHistMatch = (dir: 'up' | 'down') => {
+    if (histMatchIndices.length === 0) return;
+    setHistCurrentMatch(prev => {
+      const next = dir === 'down'
+        ? (prev + 1) % histMatchIndices.length
+        : (prev - 1 + histMatchIndices.length) % histMatchIndices.length;
+      const row = histTableRef.current?.querySelector(`[data-row="${histMatchIndices[next]}"]`);
+      row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      return next;
+    });
+  };
 
   // ── Joint mode computations ────────────────────────────────────────
   const jointPoints = useMemo(() => {

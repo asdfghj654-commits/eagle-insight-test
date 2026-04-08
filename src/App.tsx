@@ -18,6 +18,7 @@ import EngineeringPortal from "./pages/EngineeringPortal";
 import CommanderView from "./pages/CommanderView";
 import LoginPage from "./pages/LoginPage";
 import Review from "./pages/Review";
+import ReportsPage from "./pages/ReportsPage";
 
 const queryClient = new QueryClient();
 
@@ -156,8 +157,8 @@ const App = () => (
                   <Route 
                     path="/lead/reports" 
                     element={
-                      <ProtectedRoute roles={['specialist', 'engineer', 'commander']}>
-                        <Index />
+                      <ProtectedRoute roles={['technician', 'specialist', 'engineer', 'commander']}>
+                        <ReportsPage />
                       </ProtectedRoute>
                     } 
                   />
@@ -177,7 +178,11 @@ const App = () => (
                   />
                   <Route 
                     path="/engineer/rules" 
-                    element={<Navigate to="/engineer/dashboard" replace />}
+                    element={
+                      <ProtectedRoute roles={['specialist', 'engineer', 'commander']}>
+                        <Index />
+                      </ProtectedRoute>
+                    }
                   />
                   <Route 
                     path="/engineer/dashboard" 

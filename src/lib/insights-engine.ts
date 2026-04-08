@@ -82,7 +82,7 @@ export class InsightsEngine {
     const ruleViolations = rulesEngine.evaluateFlightData(flightData);
     for (const violation of ruleViolations) {
       const insight = this.createRuleViolationInsight(violation, flightData, pilotName);
-      insights.push(insight);
+      if (insight) insights.push(insight);
     }
 
     // שכבה 2: ניתוח מגמות (דורש היסטוריה)
@@ -104,13 +104,14 @@ export class InsightsEngine {
   }
 
   private createRuleViolationInsight(
-    violation: RuleViolation, 
-    flightData: FlightData, 
+    violation: RuleViolation,
+    flightData: FlightData,
     pilotName?: string
-  ): MaintenanceInsight {
+  ): MaintenanceInsight | null {
     const rule = rulesEngine.getRule(violation.rule_id);
     if (!rule) {
-      throw new Error(`Rule not found: ${violation.rule_id}`);
+      console.warn(`[InsightsEngine] Rule not found: ${violation.rule_id} — skipping insight`);
+      return null;
     }
 
     return {

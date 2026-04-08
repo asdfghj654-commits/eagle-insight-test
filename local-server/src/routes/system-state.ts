@@ -49,7 +49,7 @@ systemStateRouter.get('/state', (_req: Request, res: Response) => {
 // POST /api/system/emergency — requires auth + commander role
 systemStateRouter.post('/emergency', requireAuth, (req: Request, res: Response) => {
   const db = getDb();
-  const user = (req as any).user;
+  const user = req.authUser;
 
   // Only commander can change emergency mode
   if (!user || user.role !== 'commander') {

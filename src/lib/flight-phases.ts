@@ -194,3 +194,99 @@ export const isValidPhase = (value: any): boolean => {
   }
   return false;
 };
+
+/**
+ * Infer mission type from a flight's telemetry records.
+ * Returns 'combat', 'weather_hard', or 'training'.
+ */
+export function inferMissionTypeFromRecords(
+  records: Array<Record<string, number | string | undefined>>,
+): 'training' | 'combat' | 'weather_hard' {
+  if (records.length === 0) return 'training';
+
+  const num = (rec: Record<string, number | string | undefined>, key: string): number | undefined => {
+    const v = rec[key];
+    if (v === undefined || v === null || v === '') return undefined;
+    const n = typeof v === 'number' ? v : parseFloat(v as string);
+    return Number.isFinite(n) ? n : undefined;
+  };
+
+  let maxG = 0;
+  let countHighG = 0;
+
+  for (const rec of records) {
+    const g = num(rec, 'g_load') ?? num(rec, 'g_force') ?? 0;
+    if (g > maxG) maxG = g;
+    if (g > 4.0) countHighG += 1;
+  }
+
+  // High sustained G-load → combat profile
+  if (maxG > 6.5 || countHighG > 5) return 'combat';
+  if (maxG > 4.5 || countHighG > 2) return 'combat';
+
+  // No other signals to distinguish weather_hard without dedicated param
+  return 'training';
+}
+
+/**
+ * Infer flight phase from telemetry parameters.
+ * Used when the CSV / data source does not supply a phase column.
+ *
+ * Priority order: g-force/AoA extremes → ground/speed → vertical speed → altitude → fallback cruise.
+ */
+export function inferPhaseFromTelemetry(
+  params: Record<string, number | string | undefined>,
+): FlightPhase {
+  const num = (key: string): number | undefined => {
+    const v = params[key];
+    if (v === undefined || v === null || v === '') return undefined;
+    const n = typeof v === 'number' ? v : parseFloat(v as string);
+    return Number.isFinite(n) ? n : undefined;
+  };
+
+  const alt = num('altitude_ft');
+  const vs  = num('vertical_speed_fpm');
+  const spd = num('airspeed_kts') ?? num('landing_speed_kts');
+  const g   = num('g_load') ?? num('g_force');
+  const aoa = num('angle_of_attack_deg') ?? num('aoa_deg');
+  const brk = num('brake_temp_celsius');
+
+  // Extreme maneuver signature
+  if ((g !== undefined && Math.abs(g) > 2.5) || (aoa !== undefined && Math.abs(aoa) > 15)) {
+    return 'maneuver';
+  }
+
+  // Ground operations — low altitude + speed
+  if (alt !== undefined && alt < 300) {
+    if (spd === undefined || spd < 30) return 'taxi';
+    if (vs !== undefined && vs > 300)  return 'takeoff';
+    if (spd < 80)                       return 'landing';
+    return 'takeoff';
+  }
+
+  // Speed-only ground hint (no altitude data)
+  if (alt === undefined && spd !== undefined && spd < 30) return 'taxi';
+
+  // Hot brakes near ground
+  if (brk !== undefined && brk > 150 && (alt === undefined || alt < 1000)) {
+    return 'landing';
+  }
+
+  // Vertical speed based
+  if (vs !== undefined) {
+    if (vs >  800) return alt !== undefined && alt < 5000 ? 'takeoff' : 'climb';
+    if (vs >  200) return 'climb';
+    if (vs < -800) return alt !== undefined && alt < 5000 ? 'approach' : 'descent';
+    if (vs < -200) return alt !== undefined && alt < 8000 ? 'approach' : 'descent';
+  }
+
+  // Altitude-only hints
+  if (alt !== undefined) {
+    if (alt < 1500) return 'approach';
+    if (alt < 5000) return 'climb';
+    return 'cruise';
+  }
+
+  // No useful parameters — default
+  return 'cruise';
+}

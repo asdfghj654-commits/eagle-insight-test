@@ -2,12 +2,13 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { ingestionApi, operationsFlightsApi, type OperationsFlightDto } from '@/lib/api-client';
 import { UserRole } from '@/types/core';
 import { generateDemoFlights } from '@/lib/demo-data';
+import { inferPhaseFromTelemetry, inferMissionTypeFromRecords } from '@/lib/flight-phases';
 
 export interface CSVRecord {
   flight_id: string;
   tail_number: string;
   timestamp: string;
-  phase: 'taxi' | 'takeoff' | 'climb' | 'cruise' | 'descent' | 'landing';
+  phase: 'taxi' | 'takeoff' | 'climb' | 'cruise' | 'descent' | 'landing' | 'approach' | 'holding' | 'maneuver';
   [key: string]: any;
 }
 
@@ -62,6 +63,7 @@ export interface Rule {
     parameter: string;
     type: 'threshold' | 'range' | 'consecutive' | 'delta' | 'ratio' | 'pattern';
     value: any;
+    operator?: 'greater_than' | 'less_than' | 'equal' | 'between';
     debounce?: number;
     hysteresis?: number;
   }[];
@@ -93,6 +95,9 @@ export interface Rule {
   reviewComments?: string;
   changesRequestedAt?: string;
   changesRequestedBy?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+  updateSummary?: string;
 }
 
 export type DataMode = 'demo' | 'live';
@@ -151,8 +156,11 @@ const PROGRESS_STAGES = {
 };
 
 function normalizePhase(phase: string): CSVRecord['phase'] {
-  if (phase === 'taxi' || phase === 'takeoff' || phase === 'climb' || phase === 'cruise' || phase === 'descent' || phase === 'landing') {
-    return phase;
+  const p = phase?.toLowerCase().trim();
+  if (p === 'taxi' || p === 'takeoff' || p === 'climb' || p === 'cruise' ||
+      p === 'descent' || p === 'landing' || p === 'approach' ||
+      p === 'holding' || p === 'maneuver') {
+    return p as CSVRecord['phase'];
   }
   return 'cruise';
 }
@@ -177,13 +185,19 @@ function deriveTelemetryParameters(records: CSVRecord[], seededParameters: strin
 }
 
 function dtoToProcessedFlight(flight: OperationsFlightDto): ProcessedFlight {
-  const records = flight.records.map((record) => ({
-    flight_id: flight.flightId,
-    tail_number: flight.tailNumber,
-    timestamp: record.timestamp,
-    phase: normalizePhase(record.phase),
-    ...record.parameters,
-  }));
+  const records = flight.records.map((record) => {
+    const params = record.parameters as Record<string, number>;
+    const phase = record.phase
+      ? normalizePhase(record.phase)
+      : inferPhaseFromTelemetry(params);
+    return {
+      flight_id: flight.flightId,
+      tail_number: flight.tailNumber,
+      timestamp: record.timestamp,
+      phase,
+      ...params,
+    };
+  });
 
   return {
     flight_id: flight.flightId,
@@ -228,6 +242,20 @@ export const CSVDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [selectionSets, setSelectionSets] = useState<SelectionSet[]>([]);
   const [evidence, setEvidence] = useState<Evidence[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
+
+  const getSelectionSignature = useCallback((set: Omit<SelectionSet, 'id' | 'createdAt'>) => {
+    const firstItem = set.data[0] as { timestamp?: string | number } | undefined;
+    const lastItem = set.data[set.data.length - 1] as { timestamp?: string | number } | undefined;
+
+    return JSON.stringify({
+      source: set.source,
+      type: set.type,
+      color: set.color,
+      count: set.data.length,
+      start: firstItem?.timestamp ?? null,
+      end: lastItem?.timestamp ?? null,
+    });
+  }, []);
 
   const hasRealData = processedFlights.length > 0;
 
@@ -341,11 +369,14 @@ export const CSVDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
 
         const headers = lines[0].split(',').map((h) => h.trim());
-        const requiredColumns = ['flight_id', 'tail_number', 'timestamp', 'phase'];
+        const requiredColumns = ['flight_id', 'tail_number', 'timestamp'];
+        const metaColumns = [...requiredColumns, 'phase'];
         const missingColumns = requiredColumns.filter((col) => !headers.includes(col));
         if (missingColumns.length > 0) {
           throw new Error(`עמודות חסרות: ${missingColumns.join(', ')}`);
         }
+
+        const hasPhaseColumn = headers.includes('phase');
 
         setProcessingProgress(50);
         setProcessingStage('מעבד רשומות…');
@@ -359,9 +390,12 @@ export const CSVDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
             const value = values[idx];
             record[header] = isNaN(Number(value)) || value === '' ? value : Number(value);
           });
-          if (record.flight_id && record.tail_number && record.timestamp && record.phase) {
-            records.push(record);
+          if (!record.flight_id || !record.tail_number || !record.timestamp) continue;
+          // Infer phase when the column is absent or the cell is empty
+          if (!hasPhaseColumn || !record.phase) {
+            record.phase = inferPhaseFromTelemetry(record);
           }
+          records.push(record);
         }
 
         if (records.length === 0) {
@@ -378,15 +412,20 @@ export const CSVDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
           flightGroups.get(key)!.push(record);
         });
 
-        const telemetryParams = headers.filter(
-          (h) => !requiredColumns.includes(h),
-        );
+        // Derive numeric telemetry parameters from actual values (excludes string columns like pilot_name)
+        const telemetryParams = deriveTelemetryParameters(records);
 
         const flights: ProcessedFlight[] = Array.from(flightGroups.entries()).map(
           ([flightId, flightRecords]) => {
             const sorted = flightRecords.sort(
               (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
             );
+            // Derive mission_type if not present in the CSV
+            const hasMissionType = sorted.some((r) => r.mission_type);
+            if (!hasMissionType) {
+              const inferred = inferMissionTypeFromRecords(sorted);
+              sorted.forEach((r) => { r.mission_type = inferred; });
+            }
             return {
               flight_id: flightId,
               tail_number: String(sorted[0].tail_number),
@@ -418,12 +457,22 @@ export const CSVDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     [],
   );
 
-  const createSelectionSet = (set: Omit<SelectionSet, 'id' | 'createdAt'>): string => {
+  const createSelectionSet = useCallback((set: Omit<SelectionSet, 'id' | 'createdAt'>): string => {
+    const incomingSignature = getSelectionSignature(set);
+    const existing = selectionSets.find((candidate) => {
+      const { id: _id, createdAt: _createdAt, ...comparable } = candidate;
+      return getSelectionSignature(comparable) === incomingSignature;
+    });
+
+    if (existing) {
+      return existing.id;
+    }
+
     const id = `S${selectionSets.length + 1}`;
     const next: SelectionSet = { ...set, id, createdAt: new Date().toISOString() };
     setSelectionSets((prev) => [...prev, next]);
     return id;
-  };
+  }, [getSelectionSignature, selectionSets]);
 
   const updateSelectionSet = (id: string, updates: Partial<SelectionSet>) => {
     setSelectionSets((prev) => prev.map((set) => (set.id === id ? { ...set, ...updates } : set)));
@@ -495,7 +544,17 @@ export const CSVDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const updateRule = (id: string, updates: Partial<Rule>) => {
-    setRules((prev) => prev.map((rule) => (rule.id === id ? { ...rule, ...updates } : rule)));
+    setRules((prev) =>
+      prev.map((rule) =>
+        rule.id === id
+          ? {
+              ...rule,
+              ...updates,
+              updatedAt: updates.updatedAt ?? new Date().toISOString(),
+            }
+          : rule
+      )
+    );
   };
 
   const toggleRuleActive = (id: string) => {

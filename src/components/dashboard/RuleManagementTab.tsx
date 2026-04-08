@@ -125,17 +125,17 @@ export const RuleManagementTab = () => {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="text-right">
-              <CardTitle className="flex items-center gap-2">
+      <Card className="border-border/70 shadow-sm">
+        <CardHeader className="space-y-4">
+          <div className="flex items-start justify-between gap-4" dir="rtl">
+            <div className="space-y-2 text-right">
+              <CardTitle className="flex flex-row-reverse items-center justify-end gap-2 text-right">
                 <Settings className="h-5 w-5" />
                 ניהול כללי אחזקה
               </CardTitle>
               <CardDescription>צפייה, עריכה ובקרת אישור של כללי אחזקה מקומיים.</CardDescription>
             </div>
-            <Button onClick={handleNewRule}>
+            <Button onClick={handleNewRule} className="shrink-0">
               <Plus className="h-4 w-4 mr-2" />
               כלל חדש
             </Button>
@@ -305,24 +305,24 @@ export const RuleManagementTab = () => {
       </Dialog>
 
       {rules.length > 0 && (
-        <Card>
-          <CardHeader>
+        <Card className="border-border/70 shadow-sm">
+          <CardHeader className="space-y-2 text-right">
             <CardTitle className="text-right">מצב ספר הכללים</CardTitle>
             <CardDescription className="text-right">
               ספירות מבוססות על ספר הכללים המקומי בלבד. מדדי הרצה יוצגו רק אחרי שמירת טלמטריית ביצוע.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="text-center p-4 border rounded-lg">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="rounded-xl border border-border/70 bg-card px-4 py-5 text-center">
                 <div className="text-2xl font-bold text-green-600">{activeRuleCount}</div>
                 <div className="text-sm text-muted-foreground">כללים פעילים</div>
               </div>
-              <div className="text-center p-4 border rounded-lg">
+              <div className="rounded-xl border border-border/70 bg-card px-4 py-5 text-center">
                 <div className="text-2xl font-bold text-yellow-600">{pendingReviewCount}</div>
                 <div className="text-sm text-muted-foreground">ממתינים לאישור</div>
               </div>
-              <div className="text-center p-4 border rounded-lg">
+              <div className="rounded-xl border border-border/70 bg-card px-4 py-5 text-center">
                 <div className="text-2xl font-bold text-blue-600">{approvedRuleCount}</div>
                 <div className="text-sm text-muted-foreground">מאושרים</div>
               </div>

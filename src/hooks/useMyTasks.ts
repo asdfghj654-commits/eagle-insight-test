@@ -112,11 +112,29 @@ export const useMyTasks = (): MyTasksResult => {
   const waitingForOthers = useMemo((): MaintenanceTask[] => {
     if (!userId) return [];
 
+    // Scope to findings that are relevant to the current user:
+    // tasks that share a findingId with one of my assigned tasks, or are on the same aircraft.
+    const myFindingIds = new Set(
+      tasks
+        .filter((t) => t.assignedTo === userId)
+        .map((t) => t.findingId)
+        .filter(Boolean)
+    );
+    const myTailNumbers = new Set(
+      tasks
+        .filter((t) => t.assignedTo === userId)
+        .flatMap((t) => t.tailNumbers ?? [])
+    );
+
     const othersTasks = tasks.filter(
       (task) =>
         task.assignedTo !== userId &&
         task.status !== "completed" &&
-        (task.status === "pending_approval" || task.status === "pending_parts")
+        task.status !== "cancelled" &&
+        (
+          (task.findingId != null && myFindingIds.has(task.findingId)) ||
+          (task.tailNumbers?.some((n) => myTailNumbers.has(n)) ?? false)
+        )
     );
 
     return othersTasks.map((task) => {

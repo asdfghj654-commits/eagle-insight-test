@@ -86,7 +86,10 @@ interface FlightDossierContextType {
   // Emergency Mode
   emergencyMode: boolean;
   emergencyReason?: string;
-  setEmergencyMode: (enabled: boolean, reason: string, userId: string, userRole: UserRole) => ActionResult;
+  emergencyActivatedBy?: string;
+  emergencyActivatedAt?: string;
+  setEmergencyMode: (enabled: boolean, reason: string, userId: string, userRole: UserRole) => Promise<ActionResult>;
+  canManageEmergencyMode: (userRole: UserRole) => boolean;
 
   // Audit
   auditLog: AuditEntry[];
@@ -148,6 +151,8 @@ export const FlightDossierProvider: React.FC<{ children: ReactNode }> = ({ child
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
   const [emergencyMode, setEmergencyModeState] = useState(false);
   const [emergencyReason, setEmergencyReasonState] = useState<string | undefined>(undefined);
+  const [emergencyActivatedBy, setEmergencyActivatedBy] = useState<string | undefined>(undefined);
+  const [emergencyActivatedAt, setEmergencyActivatedAt] = useState<string | undefined>(undefined);
   const [isInitialized, setIsInitialized] = useState(false);
   const [isServerConnected, setIsServerConnected] = useState(false);
 
@@ -182,6 +187,8 @@ export const FlightDossierProvider: React.FC<{ children: ReactNode }> = ({ child
         const em = stateRes.data.emergencyMode;
         setEmergencyModeState(em.active);
         setEmergencyReasonState(em.active ? (em.reason ?? undefined) : undefined);
+        setEmergencyActivatedBy(em.active ? (em.activatedBy ?? undefined) : undefined);
+        setEmergencyActivatedAt(em.active ? (em.activatedAt ?? undefined) : undefined);
       }
 
       // Load audit (non-blocking — engineers/commanders only)
@@ -565,30 +572,52 @@ export const FlightDossierProvider: React.FC<{ children: ReactNode }> = ({ child
   // EMERGENCY MODE
   // ===========================================================================
 
-  const setEmergencyMode = useCallback((
+  const setEmergencyMode = useCallback(async (
     enabled: boolean,
     reason: string,
-    _userId: string,
+    userId: string,
     userRole: UserRole,
-  ): ActionResult => {
-    if (userRole !== 'commander') {
+  ): Promise<ActionResult> => {
+    if (!ROLE_PERMISSIONS[userRole]?.includes('emergency_mode')) {
       return { success: false, error: 'Only commanders can toggle emergency mode', errorHe: 'רק מפקד יכול להפעיל מצב חירום' };
     }
     // Optimistic update — revert if server call fails
+    const trimmedReason = reason.trim();
+    if (enabled && !trimmedReason) {
+      return { success: false, error: 'Emergency reason is required', errorHe: 'נדרשת סיבה להפעלת מצב חירום' };
+    }
+    const previousState = {
+      active: emergencyMode,
+      reason: emergencyReason,
+      activatedBy: emergencyActivatedBy,
+      activatedAt: emergencyActivatedAt,
+    };
+
     setEmergencyModeState(enabled);
-    setEmergencyReasonState(enabled ? reason : undefined);
+    setEmergencyReasonState(enabled ? trimmedReason : undefined);
+    setEmergencyActivatedBy(enabled ? userId || previousState.activatedBy : undefined);
+    setEmergencyActivatedAt(enabled ? new Date().toISOString() : undefined);
 
-    // Persist to server asynchronously
-    systemApi.setEmergencyMode(enabled, reason).then(res => {
-      if (!res.ok) {
-        // Revert on failure
-        setEmergencyModeState(!enabled);
-        setEmergencyReasonState(!enabled ? reason : undefined);
+    try {
+      const res = await systemApi.setEmergencyMode(enabled, trimmedReason);
+      if (res.ok && res.data) {
+        const next = res.data.emergencyMode;
+        setEmergencyModeState(next.active);
+        setEmergencyReasonState(next.active ? (next.reason ?? undefined) : undefined);
+        setEmergencyActivatedBy(next.active ? (next.activatedBy ?? undefined) : undefined);
+        setEmergencyActivatedAt(next.active ? (next.activatedAt ?? undefined) : undefined);
+        return { success: true };
       }
-    });
+    } catch {
+      // rollback below
+    }
 
-    return { success: true };
-  }, []);
+    setEmergencyModeState(previousState.active);
+    setEmergencyReasonState(previousState.reason);
+    setEmergencyActivatedBy(previousState.activatedBy);
+    setEmergencyActivatedAt(previousState.activatedAt);
+    return { success: false, error: 'Failed to persist emergency mode', errorHe: 'שמירת מצב החירום נכשלה' };
+  }, [emergencyActivatedAt, emergencyActivatedBy, emergencyMode, emergencyReason]);
 
   // ===========================================================================
   // PERMISSIONS
@@ -597,6 +626,10 @@ export const FlightDossierProvider: React.FC<{ children: ReactNode }> = ({ child
   const canPerformAction = useCallback((action: string, userRole: UserRole): boolean => {
     const perms = ROLE_PERMISSIONS[userRole] || [];
     return perms.includes(action) || perms.includes('view_all');
+  }, []);
+
+  const canManageEmergencyMode = useCallback((userRole: UserRole): boolean => {
+    return ROLE_PERMISSIONS[userRole]?.includes('emergency_mode') ?? false;
   }, []);
 
   // ===========================================================================
@@ -676,10 +709,13 @@ export const FlightDossierProvider: React.FC<{ children: ReactNode }> = ({ child
 
     emergencyMode,
     emergencyReason,
+    emergencyActivatedBy,
+    emergencyActivatedAt,
     setEmergencyMode,
 
     auditLog,
     canPerformAction,
+    canManageEmergencyMode,
     ingestFindings,
     isInitialized,
     isServerConnected,

@@ -1,6 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Clock, Wrench, AlertTriangle, CheckCircle, FileText, Play, ArrowRight, Eye } from "lucide-react";
+import { Clock, Wrench, AlertTriangle, CheckCircle, FileText, Play, ArrowRight, Eye, CheckCheck } from "lucide-react";
 import { ActionButton, useActionToast } from "@/components/ui/shared-actions";
 import { useState } from "react";
 import { useFlightDossier } from "@/contexts/FlightDossierContext";
@@ -64,7 +64,21 @@ export const TechnicianMaintenanceView = () => {
 
     setIsLoading("workfile");
     try {
-      showSuccess("הערות נשמרו", "ההערות תועדו במשימה המקושרת.");
+      // Persist the notes against the linked finding
+      if (selectedTask.findingId) {
+        const result = updateFindingStatus(
+          selectedTask.findingId,
+          "in_progress",
+          actorId,
+          actorRole,
+          workNotes || "תיק עבודה נפתח"
+        );
+        if (!result.success) {
+          showError("שגיאה", result.errorHe || "לא ניתן היה לשמור הערות.");
+          return;
+        }
+      }
+      showSuccess("תיק עבודה נפתח", workNotes ? "ההערות תועדו במשימה המקושרת." : "הממצא סומן כבטיפול.");
       setWorkFileDialogOpen(false);
     } catch {
       showError("שגיאה", "לא ניתן היה לפתוח מסלול עבודה.");
@@ -130,10 +144,10 @@ export const TechnicianMaintenanceView = () => {
 
       const result = updateFindingStatus(
         task.findingId,
-        "escalated",
+        "requires_investigation",
         actorId,
         actorRole,
-        workNotes || "Escalated from technician queue"
+        workNotes || "הועבר לתחקיר על ידי טכנאי"
       );
 
       if (!result.success) {
@@ -142,6 +156,30 @@ export const TechnicianMaintenanceView = () => {
       }
 
       showSuccess("הועבר לבדיקת דרג בכיר", `הממצא המקושר ל-${task.id} הוסלם.`);
+    } finally {
+      setIsLoading(null);
+    }
+  };
+
+  const handleCompleteTask = async (task: MaintenanceTask) => {
+    setIsLoading(`complete-${task.id}`);
+    try {
+      if (task.findingId) {
+        const result = updateFindingStatus(
+          task.findingId,
+          "completed",
+          actorId,
+          actorRole,
+          "סומן כהושלם על ידי טכנאי"
+        );
+        if (!result.success) {
+          showError("שגיאה", result.errorHe || "לא ניתן לסמן כהושלם.");
+          return;
+        }
+      }
+      showSuccess("משימה הושלמה", `${task.id} סומנה כהושלמה.`);
+    } catch {
+      showError("שגיאה", "שגיאה בסימון כהושלם.");
     } finally {
       setIsLoading(null);
     }
@@ -204,11 +242,24 @@ export const TechnicianMaintenanceView = () => {
               </ActionButton>
               <ActionButton
                 size="sm"
+                onClick={() => handleCompleteTask(task)}
+                isLoading={isLoading === `complete-${task.id}`}
+                loadingText=""
+                className="gap-1 bg-success/90 hover:bg-success text-success-foreground"
+                disabled={task.status === "הושלם"}
+                disabledReasonHe="המשימה כבר הושלמה"
+              >
+                <CheckCheck className="h-3 w-3" />
+                סיים
+              </ActionButton>
+              <ActionButton
+                size="sm"
                 variant="ghost"
                 onClick={() => handleEscalate(task)}
                 isLoading={isLoading === `escalate-${task.id}`}
                 loadingText=""
                 className="gap-1"
+                title="העבר לתחקיר"
               >
                 <ArrowRight className="h-3 w-3" />
               </ActionButton>

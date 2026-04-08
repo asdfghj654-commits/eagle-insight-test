@@ -9,6 +9,16 @@ import { useNavigate } from "react-router-dom";
 import { ActionButton, ConfirmModal, useActionToast, EmptyState } from "@/components/ui/shared-actions";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -229,43 +239,39 @@ const ReviewItem: React.FC<ReviewItemProps> = ({ rule, onApprove, onReject, onVi
               <AlertTriangle className="h-4 w-4" />
               רשימת בטיחות:
             </h4>
-            <div className="space-y-2 text-sm">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  className="rounded" 
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="noConflict"
                   checked={checklist.noConflict}
-                  onChange={(e) => setChecklist(prev => ({ ...prev, noConflict: e.target.checked }))}
+                  onCheckedChange={(v) => setChecklist(prev => ({ ...prev, noConflict: !!v }))}
                 />
-                <span>הכלל לא מתנגש עם מעטפת פעולה מותרת</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  className="rounded"
+                <label htmlFor="noConflict" className="cursor-pointer">הכלל לא מתנגש עם מעטפת פעולה מותרת</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="unitsVerified"
                   checked={checklist.unitsVerified}
-                  onChange={(e) => setChecklist(prev => ({ ...prev, unitsVerified: e.target.checked }))}
+                  onCheckedChange={(v) => setChecklist(prev => ({ ...prev, unitsVerified: !!v }))}
                 />
-                <span>יחידות ותנאים נבדקו ואומתו</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  className="rounded"
+                <label htmlFor="unitsVerified" className="cursor-pointer">יחידות ותנאים נבדקו ואומתו</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="falseAlarmAcceptable"
                   checked={checklist.falseAlarmAcceptable}
-                  onChange={(e) => setChecklist(prev => ({ ...prev, falseAlarmAcceptable: e.target.checked }))}
+                  onCheckedChange={(v) => setChecklist(prev => ({ ...prev, falseAlarmAcceptable: !!v }))}
                 />
-                <span>שיעור False Alarm מקובל</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  className="rounded"
+                <label htmlFor="falseAlarmAcceptable" className="cursor-pointer">שיעור False Alarm מקובל</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="historicalTested"
                   checked={checklist.historicalTested}
-                  onChange={(e) => setChecklist(prev => ({ ...prev, historicalTested: e.target.checked }))}
+                  onCheckedChange={(v) => setChecklist(prev => ({ ...prev, historicalTested: !!v }))}
                 />
-                <span>הכלל נבדק על נתונים היסטוריים</span>
-              </label>
+                <label htmlFor="historicalTested" className="cursor-pointer">הכלל נבדק על נתונים היסטוריים</label>
+              </div>
             </div>
           </div>
 
@@ -382,19 +388,204 @@ const ReviewItem: React.FC<ReviewItemProps> = ({ rule, onApprove, onReject, onVi
   );
 };
 
+const ApprovedRuleEditor = ({
+  rule,
+  onSave,
+}: {
+  rule: Rule;
+  onSave: (ruleId: string, updates: Partial<Rule>) => void;
+}) => {
+  const { user } = useAuth();
+  const { showSuccess } = useActionToast();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(rule.name);
+  const [description, setDescription] = useState(rule.description);
+  const [severity, setSeverity] = useState<Rule["severity"]>(rule.severity);
+  const [tailNumbers, setTailNumbers] = useState(rule.scope.tailNumbers?.join(", ") || "");
+  const [phases, setPhases] = useState(rule.scope.phases?.join(", ") || "");
+  const [isActive, setIsActive] = useState(rule.isActive);
+  const [updateSummary, setUpdateSummary] = useState(rule.updateSummary || "");
+  const [conditionValues, setConditionValues] = useState(
+    rule.conditions.map((condition) => ({
+      min: condition.type === "range" ? String(condition.value?.min ?? "") : "",
+      max: condition.type === "range" ? String(condition.value?.max ?? "") : "",
+      value: condition.type === "range" ? "" : String(condition.value ?? ""),
+    }))
+  );
+
+  const handleSave = () => {
+    const nextConditions = rule.conditions.map((condition, index) => {
+      const draft = conditionValues[index];
+      if (condition.type === "range") {
+        return {
+          ...condition,
+          value: {
+            min: draft.min === "" ? null : Number(draft.min),
+            max: draft.max === "" ? null : Number(draft.max),
+          },
+        };
+      }
+
+      return {
+        ...condition,
+        value: draft.value === "" ? condition.value : Number.isNaN(Number(draft.value)) ? draft.value : Number(draft.value),
+      };
+    });
+
+    onSave(rule.id, {
+      name: name.trim() || rule.name,
+      description: description.trim() || rule.description,
+      severity,
+      isActive,
+      conditions: nextConditions,
+      scope: {
+        ...rule.scope,
+        tailNumbers: tailNumbers.trim() ? tailNumbers.split(",").map((item) => item.trim()).filter(Boolean) : undefined,
+        phases: phases.trim() ? phases.split(",").map((item) => item.trim()).filter(Boolean) : undefined,
+      },
+      updatedBy: user?.nameHe || user?.name || "current-user",
+      updateSummary: updateSummary.trim() || "כלל מאושר עודכן לאחר אישור",
+      reviewComments: updateSummary.trim() || rule.reviewComments,
+    });
+
+    showSuccess("הכלל עודכן", `הכלל ${rule.name} עודכן ונשמר כמאושר.`);
+    setOpen(false);
+  };
+
+  return (
+    <>
+      <ActionButton variant="outline" className="gap-2" onClick={() => setOpen(true)}>
+        <Eye className="h-4 w-4" />
+        ערוך כלל מאושר
+      </ActionButton>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent dir="rtl" className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>עדכון כלל מאושר</DialogTitle>
+            <DialogDescription>
+              ניתן לעדכן כלל מאושר ישירות מתוך מסך הביקורת. השינוי יישמר ויופיע לשאר התפקידים כהודעת עדכון.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label>שם הכלל</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+
+            <div className="grid gap-2">
+              <Label>תיאור</Label>
+              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>חומרה</Label>
+                <Select value={severity} onValueChange={(v) => setSeverity(v as Rule["severity"])}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">נמוך</SelectItem>
+                    <SelectItem value="medium">בינוני</SelectItem>
+                    <SelectItem value="high">גבוה</SelectItem>
+                    <SelectItem value="critical">קריטי</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center justify-between rounded-md border px-3">
+                <Label>הכלל פעיל</Label>
+                <Switch checked={isActive} onCheckedChange={setIsActive} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>זנבות</Label>
+                <Input value={tailNumbers} onChange={(e) => setTailNumbers(e.target.value)} placeholder="לדוגמה: 107, 224" />
+              </div>
+              <div className="grid gap-2">
+                <Label>שלבי טיסה</Label>
+                <Input value={phases} onChange={(e) => setPhases(e.target.value)} placeholder="taxi, takeoff, landing" />
+              </div>
+            </div>
+
+            <div className="grid gap-3">
+              <Label>תנאי הכלל</Label>
+              {rule.conditions.map((condition, index) => (
+                <div key={`${rule.id}-${index}`} className="rounded-lg border p-3">
+                  <div className="mb-2 text-sm text-muted-foreground">
+                    {condition.parameter} | {condition.operator || condition.type}
+                  </div>
+                  {condition.type === "range" ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      <Input
+                        value={conditionValues[index]?.min || ""}
+                        onChange={(e) =>
+                          setConditionValues((prev) => prev.map((item, itemIndex) => itemIndex === index ? { ...item, min: e.target.value } : item))
+                        }
+                        placeholder="מינימום"
+                      />
+                      <Input
+                        value={conditionValues[index]?.max || ""}
+                        onChange={(e) =>
+                          setConditionValues((prev) => prev.map((item, itemIndex) => itemIndex === index ? { ...item, max: e.target.value } : item))
+                        }
+                        placeholder="מקסימום"
+                      />
+                    </div>
+                  ) : (
+                    <Input
+                      value={conditionValues[index]?.value || ""}
+                      onChange={(e) =>
+                        setConditionValues((prev) => prev.map((item, itemIndex) => itemIndex === index ? { ...item, value: e.target.value } : item))
+                      }
+                      placeholder="ערך תנאי"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="grid gap-2">
+              <Label>הודעת עדכון לתפקידים</Label>
+              <Textarea
+                value={updateSummary}
+                onChange={(e) => setUpdateSummary(e.target.value)}
+                rows={2}
+                placeholder="מה עודכן בכלל ולמה זה חשוב לשאר התפקידים"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <ActionButton variant="outline" onClick={() => setOpen(false)}>
+              ביטול
+            </ActionButton>
+            <ActionButton onClick={handleSave}>
+              שמור עדכון
+            </ActionButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+};
+
 const ReviewQueue = () => {
   const { rules, updateRule } = useCSVData();
   const navigate = useNavigate();
   const { user } = useAuth();
   const pendingRules = rules.filter(rule => rule.status === 'pending-review');
+  const approvedRules = rules.filter(rule => rule.status === 'approved');
 
   const handleApprove = async (ruleId: string, reason: string) => {
     await new Promise(resolve => setTimeout(resolve, 500));
     updateRule(ruleId, { 
-      status: 'active', 
+      status: 'approved',
+      isActive: true,
       approvedAt: new Date().toISOString(),
       approvedBy: user?.nameHe || 'Unknown',
-      approvalNote: reason,
+      reviewComments: reason || undefined,
     });
   };
 
@@ -402,10 +593,16 @@ const ReviewQueue = () => {
     await new Promise(resolve => setTimeout(resolve, 500));
     updateRule(ruleId, { 
       status: 'draft', 
-      rejectionNote: reason,
+      reviewComments: reason,
       rejectedAt: new Date().toISOString(),
       rejectedBy: user?.nameHe || 'Unknown',
+      updatedBy: user?.nameHe || 'Unknown',
+      updateSummary: reason,
     });
+  };
+
+  const handleApprovedRuleUpdate = (ruleId: string, updates: Partial<Rule>) => {
+    updateRule(ruleId, updates);
   };
 
   const handleViewDetails = (ruleId: string) => {
@@ -413,7 +610,7 @@ const ReviewQueue = () => {
     navigate('/portal/magen-achzaka-david');
   };
 
-  if (pendingRules.length === 0) {
+  if (pendingRules.length === 0 && approvedRules.length === 0) {
     return (
       <EmptyState
         icon={<CheckSquare className="h-12 w-12 text-green-500" />}
@@ -437,6 +634,39 @@ const ReviewQueue = () => {
           onViewDetails={handleViewDetails}
         />
       ))}
+
+      {approvedRules.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>גבולות וכללים מאושרים</CardTitle>
+            <CardDescription>רשימת הכללים שכבר אושרו ונשמרו כפעילים.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {approvedRules.map((rule) => (
+              <div key={rule.id} className="flex items-start justify-between gap-3 rounded-lg border p-3" dir="rtl">
+                <div className="space-y-1 text-right">
+                  <div className="font-medium">{rule.name}</div>
+                  <div className="text-sm text-muted-foreground">{rule.description}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {rule.approvedAt ? new Date(rule.approvedAt).toLocaleString('he-IL') : ''}
+                    {rule.approvedBy ? ` | ${rule.approvedBy}` : ''}
+                    {rule.updatedAt ? ` | ${new Date(rule.updatedAt).toLocaleString('he-IL')}` : ''}
+                  </div>
+                  {rule.updateSummary && (
+                    <div className="text-xs rounded-md bg-amber-50 px-2 py-1 text-amber-800">
+                      {rule.updateSummary}
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                  <Badge variant="default">מאושר</Badge>
+                  <ApprovedRuleEditor rule={rule} onSave={handleApprovedRuleUpdate} />
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

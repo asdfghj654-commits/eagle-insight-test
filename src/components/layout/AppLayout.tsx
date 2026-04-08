@@ -15,6 +15,16 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -36,6 +46,7 @@ import {
   BarChart3,
   FileText,
   AlertTriangle,
+  ShieldAlert,
   Loader2,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -57,10 +68,11 @@ const ROLE_NAV_ITEMS: Record<UserRole, NavItem[]> = {
   technician: [
     { label: 'Task Queue', labelHe: 'תור משימות', href: '/tech/queue', icon: <ClipboardList className="h-4 w-4" /> },
     { label: 'My Tasks', labelHe: 'המשימות שלי', href: '/tech/my-tasks', icon: <Wrench className="h-4 w-4" /> },
+    { label: 'Reports', labelHe: 'דוחות', href: '/lead/reports', icon: <FileText className="h-4 w-4" /> },
   ],
   specialist: [
     { label: 'Triage', labelHe: 'מיון ממצאים', href: '/lead/triage', icon: <AlertTriangle className="h-4 w-4" /> },
-    { label: 'Fleet Status', labelHe: 'מצב צי', href: '/lead/fleet', icon: <LayoutDashboard className="h-4 w-4" /> },
+    { label: 'Fleet Status', labelHe: 'מצב טייסת', href: '/lead/fleet', icon: <LayoutDashboard className="h-4 w-4" /> },
     { label: 'Reports', labelHe: 'דוחות', href: '/lead/reports', icon: <FileText className="h-4 w-4" /> },
   ],
   engineer: [
@@ -68,7 +80,7 @@ const ROLE_NAV_ITEMS: Record<UserRole, NavItem[]> = {
     { label: 'Rule Management', labelHe: 'ניהול כללים', href: '/engineer/rules', icon: <Settings className="h-4 w-4" /> },
   ],
   commander: [
-    { label: 'Fleet Readiness', labelHe: 'כשירות צי', href: '/commander', icon: <Shield className="h-4 w-4" /> },
+    { label: 'Fleet Readiness', labelHe: 'כשירות טייסת', href: '/commander', icon: <Shield className="h-4 w-4" /> },
     { label: 'Analytics', labelHe: 'אנליטיקס', href: '/commander/analytics', icon: <BarChart3 className="h-4 w-4" /> },
   ],
 };
@@ -120,7 +132,7 @@ const UserMenu: React.FC = () => {
             <ChevronDown className="h-4 w-4 text-muted-foreground hidden md:block" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56" dir="rtl">
+        <DropdownMenuContent align="end" className="w-56">
           <DropdownMenuLabel>
             <div className="flex flex-col">
               <span>{user.nameHe}</span>
@@ -285,15 +297,116 @@ const Navigation: React.FC = () => {
 // =============================================================================
 
 const EmergencyBanner: React.FC = () => {
-  const { emergencyMode } = useFlightDossier();
+  const { user } = useAuth();
+  const {
+    emergencyMode,
+    emergencyReason,
+    emergencyActivatedAt,
+    setEmergencyMode,
+    canManageEmergencyMode,
+  } = useFlightDossier();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [reasonInput, setReasonInput] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  if (!emergencyMode) return null;
+  if (!user) return null;
+
+  const canManage = canManageEmergencyMode(user.role);
+
+  const handleActivate = async () => {
+    if (!reasonInput.trim()) return;
+    setIsSubmitting(true);
+    const result = await setEmergencyMode(true, reasonInput, user.id, user.role);
+    setIsSubmitting(false);
+    if (result.success) {
+      setDialogOpen(false);
+      setReasonInput('');
+    } else {
+      window.alert(result.errorHe || result.error);
+    }
+  };
+
+  const handleDeactivate = async () => {
+    setIsSubmitting(true);
+    const result = await setEmergencyMode(false, emergencyReason || 'ביטול ידני של מצב חירום', user.id, user.role);
+    setIsSubmitting(false);
+    if (!result.success) {
+      window.alert(result.errorHe || result.error);
+    }
+  };
+
+  if (!emergencyMode && !canManage) return null;
 
   return (
-    <div className="bg-red-600 text-white px-4 py-2 text-center text-sm font-medium">
-      <AlertTriangle className="inline-block h-4 w-4 ml-2" />
-      מצב חירום פעיל - כל הפעולות מתועדפות
-    </div>
+    <>
+      <div className={`px-4 py-2 text-sm ${emergencyMode ? 'bg-red-600 text-white' : 'border-b border-amber-200 bg-amber-50 text-amber-950'}`}>
+        <div className="mx-auto flex max-w-[1800px] items-center justify-between gap-4">
+          <div className="flex items-center gap-2 text-right">
+            {emergencyMode ? <AlertTriangle className="h-4 w-4" /> : <ShieldAlert className="h-4 w-4" />}
+            <div>
+              <div className="font-medium">
+                {emergencyMode ? 'מצב חירום פעיל — כל הפעולות מתועדפות' : 'מצב חירום זמין להפעלה על ידי מפקד'}
+              </div>
+              {emergencyMode && (
+                <div className="text-xs text-white/85">
+                  {emergencyReason ? `סיבה: ${emergencyReason}` : 'ללא סיבה מתועדת'}
+                  {emergencyActivatedAt ? ` | הופעל: ${new Date(emergencyActivatedAt).toLocaleString('he-IL')}` : ''}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {canManage && (
+            !emergencyMode ? (
+                <Button size="sm" variant="destructive" onClick={() => setDialogOpen(true)} disabled={isSubmitting}>
+                  <ShieldAlert className="ml-2 h-4 w-4" />
+                  הפעלת מצב חירום
+                </Button>
+              ) : (
+                <Button size="sm" variant="outline" className="border-white/40 bg-white/10 text-white hover:bg-white/20" onClick={handleDeactivate} disabled={isSubmitting}>
+                  {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'צא ממצב חירום'}
+                </Button>
+              )
+            )}
+        </div>
+      </div>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5 text-red-600" />
+              הפעלת מצב חירום
+            </DialogTitle>
+            <DialogDescription>
+              מצב חירום משנה התנהגות המערכת לכל התפקידים: תיעדוף גבוה יותר, נראות גלובלית והתראות בולטות.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 py-2">
+            <Label htmlFor="global-emergency-reason">
+              סיבה להפעלת מצב חירום <span className="text-red-500">*</span>
+            </Label>
+            <Textarea
+              id="global-emergency-reason"
+              rows={4}
+              placeholder="תאר את הסיבה להפעלת מצב חירום..."
+              value={reasonInput}
+              onChange={(e) => setReasonInput(e.target.value)}
+            />
+          </div>
+
+          <DialogFooter className="gap-2">
+             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={isSubmitting}>
+               ביטול
+             </Button>
+             <Button variant="destructive" disabled={!reasonInput.trim() || isSubmitting} onClick={handleActivate}>
+               {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'הפעל מצב חירום'}
+             </Button>
+           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

@@ -11,22 +11,11 @@
  * - מצב חירום שמשנה התנהגות מערכת
  */
 
-import React, { useState } from 'react';
+import React, { useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
 import {
   AlertTriangle,
   AlertCircle,
@@ -44,8 +33,10 @@ import {
 } from 'lucide-react';
 import { useFlightDossier } from '@/contexts/FlightDossierContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { SEVERITY_CONFIG, SeverityLevel, UserRole } from '@/types/core';
 import { AiPanel } from '@/components/ai/AiPanel';
+import { useDashboardData } from '@/hooks/useDashboardData';
 
 // =============================================================================
 // FLEET STATUS CARD
@@ -74,7 +65,7 @@ const FleetStatusCard: React.FC = () => {
           <div className="flex items-center gap-3">
             {getStatusIcon()}
             <div>
-              <CardTitle className="text-xl">כשירות צי</CardTitle>
+              <CardTitle className="text-xl">כשירות טייסת</CardTitle>
               <CardDescription>Fleet Readiness Status</CardDescription>
             </div>
           </div>
@@ -114,38 +105,6 @@ const FleetStatusCard: React.FC = () => {
 // EMERGENCY MODE BANNER
 // =============================================================================
 
-const EmergencyModeBanner: React.FC = () => {
-  const { emergencyMode, setEmergencyMode } = useFlightDossier();
-  const { user } = useAuth();
-
-  if (!emergencyMode) return null;
-
-  const handleDeactivate = () => {
-    const result = setEmergencyMode(false, 'ביטול ידני של מצב חירום', user?.id || '', 'commander');
-    if (!result.success) {
-      alert(result.errorHe || result.error);
-    }
-  };
-
-  return (
-    <Alert variant="destructive" className="border-red-500 bg-red-50 dark:bg-red-950">
-      <AlertTriangle className="h-5 w-5" />
-      <AlertTitle className="text-lg font-bold">מצב חירום פעיל</AlertTitle>
-      <AlertDescription className="flex items-center justify-between">
-        <span>כל הפעולות מתועדפות לפי דחיפות. הרשאות מורחבות פעילות.</span>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={handleDeactivate}
-          className="border-red-500 text-red-600 hover:bg-red-100"
-        >
-          צא ממצב חירום
-        </Button>
-      </AlertDescription>
-    </Alert>
-  );
-};
-
 // =============================================================================
 // AGGREGATED FINDINGS CARD (Recurring issues across fleet)
 // =============================================================================
@@ -163,7 +122,7 @@ const AggregatedFindingsCard: React.FC = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Layers className="h-5 w-5 text-purple-600" />
-            <CardTitle className="text-lg">ממצאים חוזרים בצי</CardTitle>
+            <CardTitle className="text-lg">ממצאים חוזרים בטייסת</CardTitle>
           </div>
           {recurring.length > 0 && (
             <Badge variant="secondary">{recurring.length} סוגים</Badge>
@@ -211,6 +170,7 @@ const AggregatedFindingsCard: React.FC = () => {
 
 const BlockersCard: React.FC = () => {
   const { getBlockers } = useFlightDossier();
+  const navigate = useNavigate();
   const blockers = getBlockers();
 
   return (
@@ -261,7 +221,13 @@ const BlockersCard: React.FC = () => {
                     </span>
                   </div>
                 </div>
-                <Button variant="ghost" size="sm" className="flex-shrink-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="flex-shrink-0"
+                  title="פתח תחקיר"
+                  onClick={() => navigate('/portal/data-research')}
+                >
                   <ExternalLink className="h-4 w-4" />
                 </Button>
               </div>
@@ -280,10 +246,11 @@ const BlockersCard: React.FC = () => {
 const RiskQueueCard: React.FC = () => {
   const { getRiskQueue, acknowledgeFinding } = useFlightDossier();
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const [showAll, setShowAll] = React.useState(false);
   const riskQueue = getRiskQueue();
 
-  // Filter to show top 5
-  const topRisks = riskQueue.slice(0, 5);
+  const topRisks = showAll ? riskQueue : riskQueue.slice(0, 5);
 
   const handleAcknowledge = (findingId: string) => {
     const result = acknowledgeFinding(findingId, user?.id || '', (user?.role || 'commander') as UserRole);
@@ -341,9 +308,14 @@ const RiskQueueCard: React.FC = () => {
               </div>
             ))}
             
-            {riskQueue.length > 5 && (
-              <Button variant="link" className="w-full text-sm">
+            {riskQueue.length > 5 && !showAll && (
+              <Button variant="link" className="w-full text-sm" onClick={() => setShowAll(true)}>
                 הצג עוד {riskQueue.length - 5} ממצאים
+              </Button>
+            )}
+            {showAll && riskQueue.length > 5 && (
+              <Button variant="link" className="w-full text-sm" onClick={() => setShowAll(false)}>
+                הצג פחות
               </Button>
             )}
           </div>
@@ -394,7 +366,7 @@ const AircraftStatusGrid: React.FC = () => {
           <Plane className="h-5 w-5" />
           <CardTitle className="text-lg">סטטוס מטוסים</CardTitle>
         </div>
-        <CardDescription>מצב כל מטוסי הצי</CardDescription>
+        <CardDescription>מצב כל מטוסי הטייסת</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
@@ -447,6 +419,60 @@ const AircraftStatusGrid: React.FC = () => {
   );
 };
 
+const CommanderInsightsCard: React.FC = () => {
+  const { insights, hasData } = useDashboardData();
+
+  const visibleInsights = insights
+    .filter((insight) => insight.status !== 'completed')
+    .slice(0, 6);
+
+  return (
+    <Card className="col-span-2">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-blue-600" />
+            <CardTitle className="text-lg">תובנות רלוונטיות</CardTitle>
+          </div>
+          {visibleInsights.length > 0 && (
+            <Badge variant="secondary">{visibleInsights.length} פתוחות</Badge>
+          )}
+        </div>
+        <CardDescription>פיד התובנות הקנוני שמרוכז מכלל מקורות המערכת</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {!hasData || visibleInsights.length === 0 ? (
+          <div className="flex items-center gap-2 text-muted-foreground py-4">
+            <CheckCircle2 className="h-5 w-5 text-green-600" />
+            <span>אין כרגע תובנות פתוחות להצגה</span>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {visibleInsights.map((insight) => (
+              <div key={insight.insight_id} className="rounded-lg border bg-muted/30 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="font-medium">{insight.title}</div>
+                    <div className="text-sm text-muted-foreground">
+                      מטוס {insight.tail || 'לא ידוע'} | מערכת {insight.system || 'כללי'}
+                    </div>
+                  </div>
+                  <Badge variant={insight.severity === 'critical' ? 'destructive' : 'secondary'}>
+                    {insight.severity}
+                  </Badge>
+                </div>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {insight.technical_detail || insight.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
 // =============================================================================
 // HELPER COMPONENTS
 // =============================================================================
@@ -493,24 +519,8 @@ const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
 // =============================================================================
 
 export const CommanderDashboard: React.FC = () => {
-  const { emergencyMode, setEmergencyMode, isInitialized } = useFlightDossier();
-  const { user } = useAuth();
-  const [emergencyDialogOpen, setEmergencyDialogOpen] = useState(false);
-  const [emergencyReasonInput, setEmergencyReasonInput] = useState('');
-
-  const handleActivateEmergency = () => {
-    if (!emergencyReasonInput.trim()) {
-      alert('נדרשת סיבה להפעלת מצב חירום');
-      return;
-    }
-    const result = setEmergencyMode(true, emergencyReasonInput, user?.id || '', 'commander');
-    if (result.success) {
-      setEmergencyDialogOpen(false);
-      setEmergencyReasonInput('');
-    } else {
-      alert(result.errorHe || result.error);
-    }
-  };
+  const { isInitialized } = useFlightDossier();
+  const { dashboardStats } = useDashboardData();
 
   if (!isInitialized) {
     return (
@@ -525,26 +535,19 @@ export const CommanderDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6" dir="rtl">
-      {/* Emergency Mode Banner */}
-      <EmergencyModeBanner />
-
-      {/* Header Actions */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">דשבורד מפקד</h2>
-          <p className="text-muted-foreground">תמונת מצב כשירות צי</p>
+          <p className="text-muted-foreground">תמונת מצב כשירות טייסת</p>
         </div>
-        <div className="flex items-center gap-2">
-          {!emergencyMode && (
-            <Button 
-              variant="destructive"
-              onClick={() => setEmergencyDialogOpen(true)}
-            >
-              <ShieldAlert className="h-4 w-4 ml-2" />
-              הפעל מצב חירום
-            </Button>
-          )}
-        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Badge variant="secondary">{dashboardStats.totalInsights} תובנות</Badge>
+        <Badge variant={dashboardStats.criticalInsights > 0 ? 'destructive' : 'secondary'}>
+          {dashboardStats.criticalInsights} קריטיות
+        </Badge>
       </div>
 
       {/* Main Grid */}
@@ -560,6 +563,9 @@ export const CommanderDashboard: React.FC = () => {
 
         {/* Aggregated Findings */}
         <AggregatedFindingsCard />
+
+        {/* Canonical Insights Feed */}
+        <CommanderInsightsCard />
         
         {/* Aircraft Grid - spans 2 columns */}
         <AircraftStatusGrid />
@@ -573,57 +579,6 @@ export const CommanderDashboard: React.FC = () => {
           />
         </div>
       </div>
-
-      {/* Emergency Mode Dialog */}
-      <Dialog open={emergencyDialogOpen} onOpenChange={setEmergencyDialogOpen}>
-        <DialogContent dir="rtl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ShieldAlert className="h-5 w-5 text-red-600" />
-              הפעלת מצב חירום
-            </DialogTitle>
-            <DialogDescription>
-              מצב חירום משנה התנהגות המערכת: תיעדוף אוטומטי, הרשאות מורחבות, התראות מוגברות.
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-4 py-4">
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>
-                פעולה זו תתועד ב-Audit Log ותישלח התראה לכל הגורמים הרלוונטיים.
-              </AlertDescription>
-            </Alert>
-
-            <div className="space-y-2">
-              <Label htmlFor="emergency-reason">
-                סיבה להפעלת מצב חירום <span className="text-red-500">*</span>
-              </Label>
-              <Textarea
-                id="emergency-reason"
-                placeholder="תאר את הסיבה להפעלת מצב חירום..."
-                value={emergencyReasonInput}
-                onChange={(e) => setEmergencyReasonInput(e.target.value)}
-                rows={3}
-              />
-            </div>
-          </div>
-
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setEmergencyDialogOpen(false)}>
-              ביטול
-            </Button>
-            <Button 
-              variant="destructive" 
-              onClick={handleActivateEmergency}
-              disabled={!emergencyReasonInput.trim()}
-            >
-              <ShieldAlert className="h-4 w-4 ml-2" />
-              הפעל מצב חירום
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

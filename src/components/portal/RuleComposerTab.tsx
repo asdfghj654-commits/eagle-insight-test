@@ -1,5 +1,5 @@
 // Rule Composer Tab - Graphical wizard for creating maintenance rules
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,11 +42,15 @@ export const RuleComposerTab: React.FC = () => {
   const [backtestResults, setBacktestResults] = useState<any>(null);
   const [isRunningBacktest, setIsRunningBacktest] = useState(false);
 
-  // Get unique tail numbers and phases
-  const availableTails = Array.from(new Set(processedFlights.map(f => f.tail_number)));
-  const availablePhases = Array.from(new Set(
-    processedFlights.flatMap(f => f.records.map(r => r.phase))
-  ));
+  // Get unique tail numbers and phases (memoised to avoid recomputing on every render)
+  const availableTails = useMemo(
+    () => Array.from(new Set(processedFlights.map(f => f.tail_number))),
+    [processedFlights]
+  );
+  const availablePhases = useMemo(
+    () => Array.from(new Set(processedFlights.flatMap(f => f.records.map(r => r.phase)))),
+    [processedFlights]
+  );
 
   const addCondition = () => {
     const newCondition: RuleCondition = {
@@ -178,6 +182,23 @@ export const RuleComposerTab: React.FC = () => {
       });
 
       // Calculate confusion matrix
+      // Confidence = fraction of conditions that triggered (normalized 0–1)
+      const triggeredConditions = conditions.filter(cond => {
+        const vals = recordsToCheck.map(r => r[cond.parameter]).filter(v => v !== undefined && !isNaN(Number(v)));
+        const thr = parseFloat(cond.value);
+        return vals.some(v => {
+          const n = Number(v);
+          switch (cond.operator) {
+            case 'greater_than': return n > thr;
+            case 'less_than':    return n < thr;
+            case 'equal':        return n === thr;
+            case 'between': { const [mn, mx] = cond.value.split(',').map(Number); return n >= mn && n <= mx; }
+            default: return false;
+          }
+        });
+      }).length;
+      const confidence = conditions.length > 0 ? triggeredConditions / conditions.length : 0;
+
       if (hasViolation && hasKnownIssue) {
         truePositives++;
         if (examples.length < 5) {
@@ -186,7 +207,7 @@ export const RuleComposerTab: React.FC = () => {
             tail: flight.tail_number,
             predicted: true,
             actual: true,
-            confidence: 0.85 + Math.random() * 0.1,
+            confidence,
             details: violationDetails,
             type: 'TP'
           });
@@ -199,7 +220,7 @@ export const RuleComposerTab: React.FC = () => {
             tail: flight.tail_number,
             predicted: true,
             actual: false,
-            confidence: 0.55 + Math.random() * 0.2,
+            confidence,
             details: violationDetails,
             type: 'FP'
           });
@@ -212,7 +233,7 @@ export const RuleComposerTab: React.FC = () => {
             tail: flight.tail_number,
             predicted: false,
             actual: true,
-            confidence: 0.3 + Math.random() * 0.2,
+            confidence: 0,
             type: 'FN'
           });
         }
@@ -277,8 +298,8 @@ export const RuleComposerTab: React.FC = () => {
         severity: riskSeverity[0],
         probability: riskProbability[0]
       },
-      status: 'draft' as const, // All new rules start as Draft
-      isActive: false, // Not active until approved
+      status: 'pending-review' as const, // Submitted rules go directly to review queue
+      isActive: false, // Not active until approved by commander
       createdBy: 'current-user',
       backtest: backtestResults
     };
@@ -342,8 +363,8 @@ export const RuleComposerTab: React.FC = () => {
       )}
 
       {showTemplates && processedFlights.length > 0 && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="rounded-2xl border border-border/70 bg-card p-4 shadow-sm space-y-4">
+          <div className="flex items-center justify-between" dir="rtl">
             <div></div>
             <Button 
               onClick={startFromScratch}
@@ -709,10 +730,18 @@ export const RuleComposerTab: React.FC = () => {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Ground truth method notice */}
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-xs text-blue-800 dark:text-blue-200 mb-3">
+                <span className="flex-shrink-0 mt-0.5">ℹ</span>
+                <span>
+                  <strong>שיטת ה"אמת" (Ground Truth):</strong> בהיעדר נתונים מסומנים, הבדיקה משתמשת בסף בטיחות ידועים (EGT &gt;650°C, לחץ הידראולי &lt;2800 PSI, עומס G &gt;7.5) לזיהוי טיסות בעייתיות. ה-Confidence מחושב כאחוז התנאים שהופעלו בפועל.
+                </span>
+              </div>
+
               {!backtestResults && (
                 <div className="text-center py-8 space-y-4">
                   <div className="text-sm text-muted-foreground mb-4">
-                    הבדיקה תרוץ על נתוני הטיסות שנטענו ותחזיר תוצאות אמיתיות
+                    הבדיקה תרוץ על {processedFlights.length} טיסות שנטענו ותחזיר תוצאות על בסיס הנתונים האמיתיים
                   </div>
                   <Button
                     onClick={runBacktest}
@@ -827,7 +856,7 @@ export const RuleComposerTab: React.FC = () => {
                   )}
 
                   {/* Re-run and Submit buttons */}
-                  <div className="flex gap-4 justify-between">
+                  <div className="flex flex-row-reverse items-center justify-between gap-4">
                     <Button variant="outline" onClick={() => setBacktestResults(null)}>
                       הרץ שוב
                     </Button>
@@ -849,7 +878,7 @@ export const RuleComposerTab: React.FC = () => {
       </Tabs>
 
       {/* Navigation */}
-      <div className="flex justify-between">
+      <div className="flex flex-row-reverse items-center justify-between">
         <Button
           variant="outline"
           onClick={() => setCurrentStep(Math.max(1, currentStep - 1))}

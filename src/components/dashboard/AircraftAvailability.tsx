@@ -123,8 +123,10 @@ export const AircraftAvailability = () => {
     return acc;
   }, {} as Record<string, number>);
 
-  const availableCount = statusCounts.available || 0;
-  const totalCount = aircraftFleet.length;
+  const availableCount = dashboardStats.aircraftAvailable;
+  const totalCount = dashboardStats.aircraftTotal;
+  const maintenanceCount = dashboardStats.aircraftInReview;
+  const groundedCount = Math.max(0, dashboardStats.aircraftWithAlerts - dashboardStats.aircraftInReview);
 
   return (
     <Card>
@@ -144,7 +146,7 @@ export const AircraftAvailability = () => {
         {/* Summary Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="text-center p-3 bg-success/5 border border-success/20 rounded-lg">
-            <div className="text-2xl font-bold text-success">{statusCounts.available || 0}</div>
+            <div className="text-2xl font-bold text-success">{availableCount}</div>
             <div className="text-xs text-muted-foreground">זמינים</div>
           </div>
           <div className="text-center p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -152,11 +154,11 @@ export const AircraftAvailability = () => {
             <div className="text-xs text-muted-foreground">בטיסה</div>
           </div>
           <div className="text-center p-3 bg-warning/5 border border-warning/20 rounded-lg">
-            <div className="text-2xl font-bold text-warning">{statusCounts.maintenance || 0}</div>
+            <div className="text-2xl font-bold text-warning">{maintenanceCount}</div>
             <div className="text-xs text-muted-foreground">בתחזוקה</div>
           </div>
           <div className="text-center p-3 bg-destructive/5 border border-destructive/20 rounded-lg">
-            <div className="text-2xl font-bold text-destructive">{statusCounts.grounded || 0}</div>
+            <div className="text-2xl font-bold text-destructive">{groundedCount}</div>
             <div className="text-xs text-muted-foreground">מושבתים</div>
           </div>
         </div>

@@ -8,9 +8,9 @@ export const DailyMaintenanceWorkload = () => {
   
   // חישוב סטטיסטיקות מנתונים אמיתיים
   const todayStats = {
-    totalInsights: dashboardStats.totalAlerts,
-    criticalInsights: dashboardStats.criticalAlerts,
-    openInvestigations: insights.filter(i => i.status === 'requires_investigation' || i.status === 'in_progress').length,
+    totalInsights: dashboardStats.totalInsights,
+    criticalInsights: dashboardStats.criticalInsights,
+    openInvestigations: insights.filter(i => i.status === 'new' || i.status === 'in_progress' || i.status === 'escalated').length,
     treatedInsights: insights.filter(i => i.status === 'completed').length
   };
 

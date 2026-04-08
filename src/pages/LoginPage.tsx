@@ -1,5 +1,5 @@
-/**
- * Login Page — Eagle Insight
+﻿/**
+ * Login Page ג€” Eagle Insight
  *
  * Two auth paths:
  * 1. Real API: POST /api/auth/login with personal-number + password
@@ -16,12 +16,46 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import {
   Shield, Lock, User, AlertCircle, Eye, EyeOff,
-  Wrench, Settings, Crown, Loader2, Wifi, WifiOff, ChevronLeft,
+  Wrench, Settings, Crown, Loader2, Wifi, WifiOff, ChevronRight,
 } from 'lucide-react';
 import { useAuth, DEMO_USERS } from '@/contexts/AuthContext';
 import { UserRole } from '@/types/core';
 
-// ── Role configuration ────────────────────────────────────────────
+const LOGIN_TEXT = {
+  roleTech: "\u05D8\u05DB\u05E0\u05D0\u05D9 \u05DE\u05D8\u05D5\u05E1\u05D9\u05DD",
+  roleTechDesc: "\u05EA\u05D5\u05E8 \u05DE\u05E9\u05D9\u05DE\u05D5\u05EA \u00B7 \u05D0\u05D9\u05E9\u05D5\u05E8\u05D9 \u05DE\u05DE\u05E6\u05D0\u05D9\u05DD",
+  roleSpec: "\u05E8\"\u05E6 \u05D0\u05D7\u05D6\u05E7\u05D4",
+  roleSpecDesc: "\u05E0\u05D9\u05D4\u05D5\u05DC \u05DE\u05DE\u05E6\u05D0\u05D9\u05DD \u00B7 \u05E1\u05E7\u05D9\u05E8\u05EA \u05D8\u05D9\u05D9\u05E1\u05EA",
+  roleEngineer: "\u05DE\u05D4\u05E0\u05D3\u05E1 \u05D0\u05D7\u05D6\u05E7\u05D4",
+  roleEngineerDesc: "\u05D7\u05E7\u05D9\u05E8\u05EA \u05E1\u05D9\u05D2\u05E0\u05DC\u05D9\u05DD \u00B7 \u05E0\u05D9\u05D4\u05D5\u05DC \u05DB\u05DC\u05DC\u05D9\u05DD",
+  roleCommander: "\u05E7\u05E6\u05D9\u05DF \u05D8\u05DB\u05E0\u05D9",
+  roleCommanderDesc: "\u05DB\u05E9\u05D9\u05E8\u05D5\u05EA \u05D8\u05D9\u05D9\u05E1\u05EA \u00B7 \u05E0\u05D9\u05D4\u05D5\u05DC \u05E1\u05D9\u05DB\u05D5\u05E0\u05D9\u05DD",
+  seedTech: "\u05D8\u05DB\u05E0\u05D0\u05D9",
+  seedSpec: "\u05E8\"\u05E6",
+  seedEngineer: "\u05DE\u05D4\u05E0\u05D3\u05E1",
+  seedCommander: "\u05E7\u05E6\u05D9\u05DF \u05D8\u05DB\u05E0\u05D9",
+  invalidCreds: "\u05DE\u05E1\u05E4\u05E8 \u05D0\u05D9\u05E9\u05D9 \u05D0\u05D5 \u05E1\u05D9\u05E1\u05DE\u05D4 \u05E9\u05D2\u05D5\u05D9\u05D9\u05DD",
+  loginError: "\u05E9\u05D2\u05D9\u05D0\u05D4 \u05D1\u05D4\u05EA\u05D7\u05D1\u05E8\u05D5\u05EA. \u05D5\u05D3\u05D0 \u05E9\u05D4\u05E9\u05E8\u05EA \u05D4\u05DE\u05E7\u05D5\u05DE\u05D9 \u05E4\u05D5\u05E2\u05DC.",
+  quickLoginError: "\u05E9\u05D2\u05D9\u05D0\u05D4 \u05D1\u05DB\u05E0\u05D9\u05E1\u05D4 \u05DE\u05D4\u05D9\u05E8\u05D4",
+  redirecting: "\u05DE\u05E2\u05D1\u05D9\u05E8 \u05D0\u05D5\u05EA\u05DA \u05DC\u05DE\u05E2\u05E8\u05DB\u05EA...",
+  enterSystem: "\u05DB\u05E0\u05D9\u05E1\u05D4 \u05DC\u05DE\u05E2\u05E8\u05DB\u05EA",
+  serverConnected: "\u05E9\u05E8\u05EA \u05DE\u05D7\u05D5\u05D1\u05E8",
+  demoMode: "\u05DE\u05E6\u05D1 \u05D3\u05DE\u05D5",
+  serverUnavailable: "\u05E9\u05E8\u05EA \u05DC\u05D0 \u05D6\u05DE\u05D9\u05DF",
+  personalNumber: "\u05DE\u05E1\u05E4\u05E8 \u05D0\u05D9\u05E9\u05D9",
+  password: "\u05E1\u05D9\u05E1\u05DE\u05D4",
+  personalNumberExample: "\u05DC\u05DE\u05E9\u05DC: 8234567",
+  passwordPlaceholder: "\u05D4\u05D6\u05DF \u05E1\u05D9\u05E1\u05DE\u05D4",
+  connecting: "\u05DE\u05EA\u05D7\u05D1\u05E8...",
+  login: "\u05D4\u05EA\u05D7\u05D1\u05E8",
+  hideCreds: "\u05D4\u05E1\u05EA\u05E8 \u05E4\u05E8\u05D8\u05D9 \u05DB\u05E0\u05D9\u05E1\u05D4",
+  showCreds: "\u05D4\u05E6\u05D2 \u05E4\u05E8\u05D8\u05D9 \u05DB\u05E0\u05D9\u05E1\u05D4 \u05DC\u05D1\u05D3\u05D9\u05E7\u05D4",
+  sharedPassword: "\u05E1\u05D9\u05E1\u05DE\u05D4 \u05DC\u05DB\u05D5\u05DC\u05DD:",
+  quickLoginDev: "\u05DB\u05E0\u05D9\u05E1\u05D4 \u05DE\u05D4\u05D9\u05E8\u05D4 \u2014 \u05E4\u05D9\u05EA\u05D5\u05D7 \u05D1\u05DC\u05D1\u05D3",
+  footer: "\u05D7\u05D9\u05DC \u05D4\u05D0\u05D5\u05D5\u05D9\u05E8 \u05D4\u05D9\u05E9\u05E8\u05D0\u05DC\u05D9 \u2014 \u05E2\u05E0\u05E3 \u05D8\u05DB\u05E0\u05D9",
+} as const;
+
+// ג”€ג”€ Role configuration ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€
 const ROLE_CONFIG: Record<UserRole, {
   userId: string;
   labelHe: string;
@@ -33,8 +67,8 @@ const ROLE_CONFIG: Record<UserRole, {
 }> = {
   technician: {
     userId: 'tech001',
-    labelHe: 'טכנאי מטוסים',
-    descHe: 'תור משימות · אישורי ממצאים',
+    labelHe: LOGIN_TEXT.roleTech,
+    descHe: LOGIN_TEXT.roleTechDesc,
     icon: Wrench,
     accentClass: 'text-blue-400',
     borderClass: 'border-blue-500/40 hover:border-blue-400',
@@ -42,8 +76,8 @@ const ROLE_CONFIG: Record<UserRole, {
   },
   specialist: {
     userId: 'spec001',
-    labelHe: 'ר"צ אחזקה',
-    descHe: 'ניהול ממצאים · סקירת צי',
+    labelHe: LOGIN_TEXT.roleSpec,
+    descHe: LOGIN_TEXT.roleSpecDesc,
     icon: Settings,
     accentClass: 'text-emerald-400',
     borderClass: 'border-emerald-500/40 hover:border-emerald-400',
@@ -51,8 +85,8 @@ const ROLE_CONFIG: Record<UserRole, {
   },
   engineer: {
     userId: 'eng001',
-    labelHe: 'מהנדס אחזקה',
-    descHe: 'חקירת סיגנלים · ניהול כללים',
+    labelHe: LOGIN_TEXT.roleEngineer,
+    descHe: LOGIN_TEXT.roleEngineerDesc,
     icon: Shield,
     accentClass: 'text-violet-400',
     borderClass: 'border-violet-500/40 hover:border-violet-400',
@@ -60,8 +94,8 @@ const ROLE_CONFIG: Record<UserRole, {
   },
   commander: {
     userId: 'cmd001',
-    labelHe: 'מפקד גף טכני',
-    descHe: 'כשירות צי · ניהול סיכונים',
+    labelHe: LOGIN_TEXT.roleCommander,
+    descHe: LOGIN_TEXT.roleCommanderDesc,
     icon: Crown,
     accentClass: 'text-amber-400',
     borderClass: 'border-amber-500/40 hover:border-amber-400',
@@ -71,15 +105,15 @@ const ROLE_CONFIG: Record<UserRole, {
 
 const ROLE_ORDER: UserRole[] = ['technician', 'specialist', 'engineer', 'commander'];
 
-// ── Seeded credentials table ──────────────────────────────────────
+// ג”€ג”€ Seeded credentials table ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€
 const SEED_CREDENTIALS = [
-  { roleHe: 'טכנאי',  personalNumber: '8234567' },
-  { roleHe: 'ר"צ',    personalNumber: '7123456' },
-  { roleHe: 'מהנדס',  personalNumber: '6012345' },
-  { roleHe: 'מפקד',   personalNumber: '5001234' },
+  { roleHe: LOGIN_TEXT.seedTech, personalNumber: '8234567' },
+  { roleHe: LOGIN_TEXT.seedSpec, personalNumber: '7123456' },
+  { roleHe: LOGIN_TEXT.seedEngineer, personalNumber: '6012345' },
+  { roleHe: LOGIN_TEXT.seedCommander, personalNumber: '5001234' },
 ];
 
-// ── Main component ────────────────────────────────────────────────
+// ג”€ג”€ Main component ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { login, devLoginAs, isAuthenticated, getDefaultRoute, isDevelopment, serverAvailable } = useAuth();
@@ -102,7 +136,7 @@ const LoginPage: React.FC = () => {
     }
   }, [isAuthenticated, navigate, getDefaultRoute]);
 
-  // ── Form login ────────────────────────────────────────────────
+  // ג”€ג”€ Form login ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -110,28 +144,28 @@ const LoginPage: React.FC = () => {
     try {
       const result = await login(personalNumber, password);
       if (!result.success) {
-        setError(result.errorHe || 'מספר אישי או סיסמה שגויים');
+        setError(result.errorHe || LOGIN_TEXT.invalidCreds);
       }
     } catch {
-      setError('שגיאה בהתחברות. ודא שהשרת המקומי פועל.');
+      setError(LOGIN_TEXT.loginError);
     } finally {
       setIsLoading(false);
     }
   }, [login, personalNumber, password]);
 
-  // ── Dev quick-login ───────────────────────────────────────────
+  // ג”€ג”€ Dev quick-login ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€
   const handleQuickLogin = useCallback(async (role: UserRole) => {
     setLoadingRole(role);
     setError(null);
     try {
       devLoginAs(role);
     } catch {
-      setError('שגיאה בכניסה מהירה');
+      setError(LOGIN_TEXT.quickLoginError);
       setLoadingRole(null);
     }
   }, [devLoginAs]);
 
-  // ── Render ────────────────────────────────────────────────────
+  // ג”€ג”€ Render ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€
   return (
     <div
       className={`min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden transition-opacity duration-300 ${isTransitioning ? 'opacity-60' : 'opacity-100'}`}
@@ -156,42 +190,42 @@ const LoginPage: React.FC = () => {
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm">
           <div className="text-center space-y-3">
             <Loader2 className="h-10 w-10 text-blue-400 animate-spin mx-auto" />
-            <p className="text-blue-200 text-sm">מעביר אותך למערכת…</p>
+            <p className="text-blue-200 text-sm">{LOGIN_TEXT.redirecting}</p>
           </div>
         </div>
       )}
 
       <div className="relative w-full max-w-md space-y-6">
 
-        {/* ── Branding ───────────────────────────────────────── */}
+        {/* ג”€ג”€ Branding ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ */}
         <div className="text-center space-y-3">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl shadow-2xl relative"
             style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)' }}>
             <Shield className="h-8 w-8 text-white" />
-            <span className="absolute -bottom-1 -left-1 w-5 h-5 bg-white rounded-full flex items-center justify-center shadow-md text-blue-700 text-[10px] font-bold">✡</span>
+            <span className="absolute -bottom-1 -left-1 w-5 h-5 bg-white rounded-full flex items-center justify-center shadow-md text-blue-700 text-[10px] font-bold">מד</span>
           </div>
           <div>
             <h1 className="text-2xl font-bold text-white tracking-tight">Eagle Insight</h1>
-            <p className="text-slate-400 text-sm mt-0.5">מערכת תובנות טיסה — ענף טכני</p>
+              <p className="text-slate-400 text-sm mt-0.5">מערכת תובנות טיסה — המטה הטכנולוגי</p>
           </div>
         </div>
 
-        {/* ── Login card ─────────────────────────────────────── */}
+        {/* ג”€ג”€ Login card ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ */}
         <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md shadow-2xl overflow-hidden">
 
           {/* Card header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-            <span className="text-white font-semibold text-sm">כניסה למערכת</span>
+            <span className="text-white font-semibold text-sm">{LOGIN_TEXT.enterSystem}</span>
             <div className="flex items-center gap-1.5 text-xs">
               {serverAvailable ? (
                 <>
                   <Wifi className="h-3 w-3 text-emerald-400" />
-                  <span className="text-emerald-400">שרת מחובר</span>
+                  <span className="text-emerald-400">{LOGIN_TEXT.serverConnected}</span>
                 </>
               ) : (
                 <>
                   <WifiOff className="h-3 w-3 text-amber-400" />
-                  <span className="text-amber-400">{isDevelopment ? 'מצב דמו' : 'שרת לא זמין'}</span>
+                  <span className="text-amber-400">{isDevelopment ? LOGIN_TEXT.demoMode : LOGIN_TEXT.serverUnavailable}</span>
                 </>
               )}
             </div>
@@ -209,14 +243,14 @@ const LoginPage: React.FC = () => {
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1.5">
-                <Label htmlFor="personalNumber" className="text-slate-300 text-xs">מספר אישי</Label>
+                <Label htmlFor="personalNumber" className="text-slate-300 text-xs">{LOGIN_TEXT.personalNumber}</Label>
                 <div className="relative">
                   <User className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
                   <Input
                     id="personalNumber"
                     type="text"
                     inputMode="numeric"
-                    placeholder="למשל: 8234567"
+                    placeholder={LOGIN_TEXT.personalNumberExample}
                     value={personalNumber}
                     onChange={e => setPersonalNumber(e.target.value)}
                     className="pr-10 bg-white/5 border-white/20 text-white placeholder:text-slate-600 focus:border-blue-500 focus:ring-blue-500/20"
@@ -228,13 +262,13 @@ const LoginPage: React.FC = () => {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="password" className="text-slate-300 text-xs">סיסמה</Label>
+                <Label htmlFor="password" className="text-slate-300 text-xs">{LOGIN_TEXT.password}</Label>
                 <div className="relative">
                   <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
                   <Input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
-                    placeholder="הזן סיסמה"
+                    placeholder={LOGIN_TEXT.passwordPlaceholder}
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     className="pr-10 pl-10 bg-white/5 border-white/20 text-white placeholder:text-slate-600 focus:border-blue-500 focus:ring-blue-500/20"
@@ -262,12 +296,12 @@ const LoginPage: React.FC = () => {
                 {isLoading ? (
                   <span className="flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    מתחבר…
+                    {LOGIN_TEXT.connecting}
                   </span>
                 ) : (
                   <span className="flex items-center gap-2">
-                    <ChevronLeft className="h-4 w-4" />
-                    התחבר
+                    <ChevronRight className="h-4 w-4" />
+                    {LOGIN_TEXT.login}
                   </span>
                 )}
               </Button>
@@ -280,12 +314,12 @@ const LoginPage: React.FC = () => {
                   onClick={() => setShowCredentials(v => !v)}
                   className="text-xs text-slate-500 hover:text-slate-400 flex items-center gap-1 transition-colors w-full justify-center"
                 >
-                  {showCredentials ? 'הסתר פרטי כניסה' : 'הצג פרטי כניסה לבדיקה'}
+                  {showCredentials ? LOGIN_TEXT.hideCreds : LOGIN_TEXT.showCreds}
                 </button>
                 {showCredentials && (
                   <div className="mt-2 rounded-lg border border-white/10 bg-white/5 overflow-hidden">
                     <div className="px-3 py-1.5 text-[10px] text-slate-400 border-b border-white/10 text-center">
-                      סיסמה לכולם: <code className="text-amber-400 font-mono font-bold">password</code>
+                      {LOGIN_TEXT.sharedPassword} <code className="text-amber-400 font-mono font-bold">password</code>
                     </div>
                     <div className="divide-y divide-white/5">
                       {SEED_CREDENTIALS.map(c => (
@@ -302,12 +336,12 @@ const LoginPage: React.FC = () => {
           </div>
         </div>
 
-        {/* ── Dev quick-login ─────────────────────────────────── */}
+        {/* ג”€ג”€ Dev quick-login ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ */}
         {isDevelopment && (
           <div className="space-y-3">
             <div className="flex items-center gap-3">
               <div className="flex-1 h-px bg-white/10" />
-              <span className="text-xs text-slate-500 whitespace-nowrap">כניסה מהירה — פיתוח בלבד</span>
+              <span className="text-xs text-slate-500 whitespace-nowrap">{LOGIN_TEXT.quickLoginDev}</span>
               <div className="flex-1 h-px bg-white/10" />
             </div>
 
@@ -351,9 +385,9 @@ const LoginPage: React.FC = () => {
           </div>
         )}
 
-        {/* ── Footer ─────────────────────────────────────────── */}
+        {/* ג”€ג”€ Footer ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ */}
         <p className="text-center text-xs text-slate-600">
-          © {new Date().getFullYear()} חיל האוויר הישראלי — ענף טכני
+          ֲ© {new Date().getFullYear()} {LOGIN_TEXT.footer}
           {isDevelopment && (
             <Badge variant="outline" className="mr-2 text-[10px] border-slate-700 text-slate-500">DEV</Badge>
           )}

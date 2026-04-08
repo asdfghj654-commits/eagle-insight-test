@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 
 interface Investigation {
   id: string;
@@ -51,6 +52,14 @@ export const OpenInvestigations = () => {
   const [newStatus, setNewStatus] = useState('');
   const [statusNote, setStatusNote] = useState('');
   const [isLoading, setIsLoading] = useState<string | null>(null);
+  const [newInvestigationForm, setNewInvestigationForm] = useState({
+    title: '',
+    aircraft: '',
+    flightDate: '',
+    system: '',
+    assignedTo: '',
+    description: '',
+  });
   
   const investigations = useMemo(() => {
     if (!hasData) return [];
@@ -102,8 +111,13 @@ export const OpenInvestigations = () => {
   };
 
   const canEdit = (investigation: Investigation) => {
-    return currentUser.role === 'commander' || 
-           (currentUser.role === 'maintenance-chief' && investigation.assignedTo.includes('ר״צ'));
+    if (currentUser.role === 'commander') return true;
+    // specialist is the production role name; maintenance-chief is the legacy alias
+    if (currentUser.role === 'specialist' || currentUser.role === 'maintenance-chief') {
+      return investigation.assignedTo.includes('ר״צ') || investigation.assignedTo.includes('מומחה');
+    }
+    if (currentUser.role === 'engineer') return true;
+    return false;
   };
 
   const canClose = (investigation: Investigation) => {
@@ -177,6 +191,29 @@ export const OpenInvestigations = () => {
   };
 
   const handleOpenNewInvestigation = () => {
+    setNewInvestigationForm({
+      title: '',
+      aircraft: '',
+      flightDate: '',
+      system: '',
+      assignedTo: '',
+      description: '',
+    });
+    setNewDialogOpen(true);
+  };
+
+  const handleCreateInvestigationDraft = () => {
+    if (!newInvestigationForm.title.trim() || !newInvestigationForm.description.trim()) {
+      showError('שדות חסרים', 'יש למלא לפחות כותרת ותיאור תחקיר.');
+      return;
+    }
+
+    sessionStorage.setItem('investigation_draft', JSON.stringify({
+      ...newInvestigationForm,
+      openedAt: new Date().toISOString(),
+      openedBy: currentUser.name,
+    }));
+    setNewDialogOpen(false);
     navigate('/portal/magen-achzaka-david');
   };
 
@@ -402,6 +439,85 @@ export const OpenInvestigations = () => {
               loadingText="מעדכן..."
             >
               עדכן סטטוס
+            </ActionButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={newDialogOpen} onOpenChange={setNewDialogOpen}>
+        <DialogContent dir="rtl" className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5" />
+              פתח תחקיר חדש
+            </DialogTitle>
+            <DialogDescription>
+              מלא פרטי תחקיר ראשוניים. לאחר השמירה תועבר לפורטל עם טיוטה מוכנה להמשך מילוי.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4 md:grid-cols-2">
+            <div className="space-y-2 md:col-span-2">
+              <Label>כותרת</Label>
+              <Input
+                value={newInvestigationForm.title}
+                onChange={(e) => setNewInvestigationForm((prev) => ({ ...prev, title: e.target.value }))}
+                placeholder="לדוגמה: חריגת EGT בנחיתה"
+                className="text-right"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>מטוס</Label>
+              <Input
+                value={newInvestigationForm.aircraft}
+                onChange={(e) => setNewInvestigationForm((prev) => ({ ...prev, aircraft: e.target.value }))}
+                placeholder="מספר זנב"
+                className="text-right"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>תאריך טיסה</Label>
+              <Input
+                type="date"
+                value={newInvestigationForm.flightDate}
+                onChange={(e) => setNewInvestigationForm((prev) => ({ ...prev, flightDate: e.target.value }))}
+                className="text-right"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>מערכת</Label>
+              <Input
+                value={newInvestigationForm.system}
+                onChange={(e) => setNewInvestigationForm((prev) => ({ ...prev, system: e.target.value }))}
+                placeholder="מנוע / הידראוליקה / בלמים"
+                className="text-right"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>אחראי</Label>
+              <Input
+                value={newInvestigationForm.assignedTo}
+                onChange={(e) => setNewInvestigationForm((prev) => ({ ...prev, assignedTo: e.target.value }))}
+                placeholder="שם גורם מטפל"
+                className="text-right"
+              />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label>תיאור</Label>
+              <Textarea
+                value={newInvestigationForm.description}
+                onChange={(e) => setNewInvestigationForm((prev) => ({ ...prev, description: e.target.value }))}
+                placeholder="רקע, חריגה שנצפתה, מה נדרש לבדוק"
+                rows={5}
+                className="text-right"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <ActionButton variant="outline" onClick={() => setNewDialogOpen(false)}>
+              ביטול
+            </ActionButton>
+            <ActionButton onClick={handleCreateInvestigationDraft}>
+              שמור ופתח בפורטל
             </ActionButton>
           </DialogFooter>
         </DialogContent>

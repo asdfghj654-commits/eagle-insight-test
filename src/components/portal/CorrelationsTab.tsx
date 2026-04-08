@@ -15,43 +15,10 @@ import {
 import { TrendingUp, Target, Activity, AlertTriangle, ArrowUpRight, ArrowDownRight, Search, MoreVertical } from 'lucide-react';
 import { useCSVData } from '@/contexts/CSVDataContext';
 import { DataAdapter } from '@/lib/data-adapter';
+import { computeLinearRegression, calculateCorrelation } from '@/lib/math-utils';
 import { ChartToolbar, HelpTooltip, ProgressCell, FullscreenOverlay, FloatingSearchPopup, ColumnContextMenu, useColumnConfigs } from './ChartToolbar';
 
-// ─── Regression helpers ───────────────────────────────────────────────────────
-
-interface RegressionResult {
-  slope: number;
-  intercept: number;
-  stdDev: number;
-  rSquared: number;
-}
-
-function computeLinearRegression(data: { x: number; y: number }[]): RegressionResult | null {
-  const n = data.length;
-  if (n < 3) return null;
-
-  const sumX  = data.reduce((s, p) => s + p.x, 0);
-  const sumY  = data.reduce((s, p) => s + p.y, 0);
-  const sumXY = data.reduce((s, p) => s + p.x * p.y, 0);
-  const sumX2 = data.reduce((s, p) => s + p.x * p.x, 0);
-
-  const denom = n * sumX2 - sumX * sumX;
-  if (denom === 0) return null;
-
-  const slope     = (n * sumXY - sumX * sumY) / denom;
-  const intercept = (sumY - slope * sumX) / n;
-
-  const predictions = data.map(p => slope * p.x + intercept);
-  const residuals   = data.map((p, i) => p.y - predictions[i]);
-  const ssRes       = residuals.reduce((s, r) => s + r * r, 0);
-  const stdDev      = Math.sqrt(ssRes / n);
-
-  const meanY = sumY / n;
-  const ssTot = data.reduce((s, p) => s + (p.y - meanY) ** 2, 0);
-  const rSquared = ssTot === 0 ? 0 : 1 - ssRes / ssTot;
-
-  return { slope, intercept, stdDev, rSquared };
-}
+// ─── Local histogram helper (returns string-keyed bins for bar chart labels) ──
 
 function buildHistogram(values: number[], bins = 20): { bin: string; count: number }[] {
   if (values.length === 0) return [];
@@ -67,22 +34,6 @@ function buildHistogram(values: number[], bins = 20): { bin: string; count: numb
     bin: (min + i * step).toFixed(1),
     count,
   }));
-}
-
-// ─── Pearson correlation ──────────────────────────────────────────────────────
-
-function calculateCorrelation(x: number[], y: number[]): number {
-  const n = Math.min(x.length, y.length);
-  if (n < 2) return 0;
-  const meanX = x.slice(0, n).reduce((s, v) => s + v, 0) / n;
-  const meanY = y.slice(0, n).reduce((s, v) => s + v, 0) / n;
-  let num = 0, sqX = 0, sqY = 0;
-  for (let i = 0; i < n; i++) {
-    const dx = x[i] - meanX, dy = y[i] - meanY;
-    num += dx * dy; sqX += dx * dx; sqY += dy * dy;
-  }
-  const denom = Math.sqrt(sqX * sqY);
-  return denom === 0 ? 0 : num / denom;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -228,17 +179,6 @@ export const CorrelationsTab: React.FC = () => {
   ], [xLabel, yLabel]);
   const outlierColCfg = useColumnConfigs(outlierColDefs);
 
-  // Search match indices for floating search popup
-  const matchIndices = useMemo(() => {
-    if (!searchQuery.trim() || !showSearch) return [];
-    const q = searchQuery.toLowerCase();
-    return tableData.reduce<number[]>((acc, r, i) => {
-      if (r.tail_number?.toLowerCase().includes(q) || r.flight_id?.toLowerCase().includes(q) || r.phase?.toLowerCase().includes(q))
-        acc.push(i);
-      return acc;
-    }, []);
-  }, [tableData, searchQuery, showSearch]);
-
   // Table: sort only (floating search highlights in-place, no filter)
   const tableData = useMemo(() => {
     const rows = [...scatterData];
@@ -254,7 +194,18 @@ export const CorrelationsTab: React.FC = () => {
       }
     });
     return rows;
-  }, [scatterData, searchQuery, tableSortCol, tableSortDir]);
+  }, [scatterData, tableSortCol, tableSortDir]);
+
+  // Search match indices (must come AFTER tableData)
+  const matchIndices = useMemo(() => {
+    if (!searchQuery.trim() || !showSearch) return [];
+    const q = searchQuery.toLowerCase();
+    return tableData.reduce<number[]>((acc, r, i) => {
+      if (r.tail_number?.toLowerCase().includes(q) || r.flight_id?.toLowerCase().includes(q) || r.phase?.toLowerCase().includes(q))
+        acc.push(i);
+      return acc;
+    }, []);
+  }, [tableData, searchQuery, showSearch]);
 
   const maxX = useMemo(() => Math.max(...scatterData.map(d => Math.abs(d.x)), 1), [scatterData]);
   const maxY = useMemo(() => Math.max(...scatterData.map(d => Math.abs(d.y)), 1), [scatterData]);

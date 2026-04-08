@@ -17,10 +17,6 @@ import {
   GitMerge,
 } from 'lucide-react';
 
-const SELECTION_COLORS = [
-  '#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#06b6d4', '#ef4444',
-];
-
 const TYPE_LABELS: Record<string, string> = {
   'time-range':   'טווח זמן',
   'value-range':  'טווח ערכים',
@@ -139,8 +135,8 @@ export const SelectionSetsPanel: React.FC = () => {
 
         {/* Sets list — no fixed cap: grows to fill space beside the charts */}
         <div className="space-y-1.5 overflow-y-auto pr-0.5" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-          {selectionSets.map((set, idx) => {
-            const color = SELECTION_COLORS[idx % SELECTION_COLORS.length];
+          {selectionSets.map((set) => {
+            const color = set.color || '#3b82f6';
             const isEditing = editingId === set.id;
             const isSelected = selectedForOp.includes(set.id);
 
@@ -179,18 +175,23 @@ export const SelectionSetsPanel: React.FC = () => {
                   </div>
                 ) : (
                   <div
-                    className="p-2 cursor-pointer"
+                    className="group p-2 cursor-pointer"
                     onClick={() => toggleOp(set.id)}
                   >
                     {/* Top row */}
                     <div className="flex items-center gap-2">
-                      {/* Color swatch + selection indicator */}
-                      <div
-                        className={`w-3 h-3 rounded-full flex-shrink-0 ring-2 transition-all ${
-                          isSelected ? 'ring-primary ring-offset-1' : 'ring-transparent'
-                        }`}
-                        style={{ backgroundColor: color }}
-                      />
+                      {/* Chart color swatch + selection indicator */}
+                      <div className="flex items-center gap-1.5 rounded-md border border-border/70 bg-muted/30 px-1.5 py-1 flex-shrink-0">
+                        <div
+                          className={`h-3.5 w-3.5 rounded-sm border border-white/80 shadow-sm ring-2 transition-all ${
+                            isSelected ? 'ring-primary ring-offset-1' : 'ring-transparent'
+                          }`}
+                          style={{ backgroundColor: color }}
+                        />
+                        <span className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">
+                          צבע בגרף
+                        </span>
+                      </div>
                       <span className="text-xs font-medium flex-1 truncate">{set.name}</span>
                       {/* Actions */}
                       <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"

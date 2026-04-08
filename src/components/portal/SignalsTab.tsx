@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, memo, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, memo, useEffect, useRef } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -12,8 +12,9 @@ import { StatsBar } from './StatsBar';
 import { PhaseBandsToggle } from './PhaseBandsToggle';
 import { GraphEditor } from './GraphEditor';
 import { FullScreenModal } from './FullScreenModal';
+import { ChartToolbar, HelpTooltip, ProgressCell, FullscreenOverlay, FloatingSearchPopup, ColumnContextMenu, useColumnConfigs } from './ChartToolbar';
 import { DemoDataButton } from './DemoDataButton';
-import { Activity, Plane, AlertTriangle, Maximize2, Settings, Info, User, Briefcase, MapPin, FileText, X, FileDown, StickyNote, Trash2 } from 'lucide-react';
+import { Activity, Plane, AlertTriangle, Settings, Info, User, Briefcase, MapPin, FileText, X, FileDown, StickyNote, Trash2, Search, MoreVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { ProcessedFlight } from '@/contexts/CSVDataContext';
 
@@ -225,14 +226,40 @@ const PhaseTimeline: React.FC<{
               className="flex items-center justify-center text-white text-[10px] font-semibold transition-all overflow-hidden hover:brightness-110 relative"
               style={{
                 width: `${pct}%`,
-                minWidth: '6px',
+                minWidth: '8px',
                 backgroundColor: color,
                 opacity: isDimmed ? 0.25 : 1,
                 boxShadow: isFocused ? `0 0 0 2px white inset` : 'none',
               }}
             >
-              {pct > 10 && <span className="truncate px-1">{PHASE_LABELS_HE[band.phase] ?? band.phase}</span>}
-              {pct > 16 && <span className="opacity-70 text-[9px]"> {durationMin}דק</span>}
+              {pct > 7 && <span className="truncate px-1">{PHASE_LABELS_HE[band.phase] ?? band.phase}</span>}
+              {pct > 14 && <span className="opacity-70 text-[9px]"> {durationMin}דק</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Phase legend — shows all phases including short ones (taxi, landing) */}
+      <div className="flex flex-wrap gap-2">
+        {[...new Set(bands.map(b => b.phase))].map(phase => {
+          const color = PHASE_BAND_COLORS[phase] ?? '#94a3b8';
+          const isFocused = focused === phase;
+          const totalSec = Math.round(bands.filter(b => b.phase === phase).reduce((s, b) => s + (b.end - b.start), 0) / 1000);
+          return (
+            <button
+              key={phase}
+              onClick={() => onFocus(isFocused ? null : phase)}
+              className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition-all ${
+                isFocused
+                  ? 'border-primary/40 bg-primary/10 text-foreground shadow-sm'
+                  : 'border-border/70 bg-card/80 text-muted-foreground hover:border-primary/25 hover:bg-muted/60'
+              } ${focused && !isFocused ? 'opacity-35' : 'opacity-100'}`}
+            >
+              <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+              <span className={isFocused ? 'font-semibold text-foreground' : 'font-medium'}>
+                {PHASE_LABELS_HE[phase] ?? phase}
+              </span>
+              <span className="text-muted-foreground/60">{totalSec < 60 ? `${totalSec}ש` : `${Math.round(totalSec / 60)}ד`}</span>
             </button>
           );
         })}
@@ -376,14 +403,18 @@ interface SubchartProps {
   showMovingAvg?: boolean;
   onChartClick?: (timestamp: number) => void;
   onHover?: (ts: number | null) => void;
+  focusedPhase?: string | null;
 }
 
 export const ParameterSubchart = memo(({
   param, paramIdx, data, phaseBands, showPhaseBands, isLast, onBrushChange, formatTimestamp,
-  annotations = [], showMovingAvg = false, onChartClick, onHover,
+  annotations = [], showMovingAvg = false, onChartClick, onHover, focusedPhase,
 }: SubchartProps) => {
   const info  = PARAMETER_THRESHOLDS[param];
   const color = getParamColor(param, paramIdx);
+  const chartRef = useRef<HTMLDivElement>(null);
+  const fullscreenChartRef = useRef<HTMLDivElement>(null);
+  const [showFullscreen, setShowFullscreen] = useState(false);
 
   const { maxVal, minVal } = useMemo(() => {
     const vals = data.map(d => d[param]).filter((v): v is number => v != null && isFinite(v));
@@ -494,6 +525,17 @@ export const ParameterSubchart = memo(({
     }
   };
 
+  const chartCsvData = useMemo(() => (
+    data.map(row => ({
+      timestamp: row.timestamp,
+      time: formatTimestamp(row.timestamp),
+      phase: phaseBands.find(b => row.timestamp >= b.start && row.timestamp <= b.end)?.phase ?? '',
+      value: row[param],
+      unit: info?.unit ?? '',
+      parameter: info?.labelHe ?? param,
+    }))
+  ), [data, formatTimestamp, info, param, phaseBands]);
+
   return (
     <div className={`border rounded-lg overflow-hidden ${borderCls}`}>
       {/* Header */}
@@ -513,12 +555,24 @@ export const ParameterSubchart = memo(({
           <span className="text-muted-foreground tabular-nums">
             {minVal.toFixed(1)} – {maxVal.toFixed(1)}{info?.unit ? ` ${info.unit}` : ''}
           </span>
+          {focusedPhase && (
+            <Badge variant="outline" className="py-0 h-4 text-[10px]">
+              {PHASE_LABELS_HE[focusedPhase] ?? focusedPhase}
+            </Badge>
+          )}
           {breached && <Badge variant="destructive" className="py-0 h-4 text-[10px]">חריגה</Badge>}
           {!breached && warned && <Badge variant="outline" className="py-0 h-4 text-[10px] text-amber-700 border-amber-400">אזהרה</Badge>}
+          <HelpTooltip text="כל גרף כולל כלי תצוגה נפרדים לגרף הזה: ייצוא ופעולות תצוגה מקומיות." />
+          <ChartToolbar
+            chartRef={chartRef}
+            csvData={chartCsvData}
+            exportFilename={`signal_${param}`}
+          />
         </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={isLast ? 180 : 150}>
+      <div ref={chartRef} className="px-2 pb-2">
+        <ResponsiveContainer width="100%" height={isLast ? 180 : 150}>
         <LineChart
           data={data}
           syncId="eagle-signals"
@@ -638,11 +692,190 @@ export const ParameterSubchart = memo(({
               onChange={onBrushChange} tickFormatter={formatTimestamp} />
           )}
         </LineChart>
-      </ResponsiveContainer>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 });
 ParameterSubchart.displayName = 'ParameterSubchart';
+
+interface SignalDataTableProps {
+  rows: any[];
+  selectedParameters: string[];
+  searchOpen: boolean;
+  searchValue: string;
+  currentMatch: number;
+  onCloseSearch: () => void;
+  onSearchChange: (value: string) => void;
+  onNavigateMatch: (direction: 'up' | 'down') => void;
+}
+
+const SignalDataTable: React.FC<SignalDataTableProps> = ({
+  rows,
+  selectedParameters,
+  searchOpen,
+  searchValue,
+  currentMatch,
+  onCloseSearch,
+  onSearchChange,
+  onNavigateMatch,
+}) => {
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const [selectedRow, setSelectedRow] = useState<number | null>(null);
+  const [colMenuKey, setColMenuKey] = useState<string | null>(null);
+  const [colMenuAnchor, setColMenuAnchor] = useState<HTMLElement | null>(null);
+
+  const colDefs = useMemo(() => ([
+    { key: 'timestamp', label: 'זמן' },
+    { key: 'phase', label: 'שלב' },
+    { key: 'flight_id', label: 'טיסה' },
+    { key: 'tail_number', label: 'זנב' },
+    ...selectedParameters.map(param => ({ key: param, label: PARAMETER_THRESHOLDS[param]?.labelHe ?? param })),
+  ]), [selectedParameters]);
+
+  const colCfg = useColumnConfigs(colDefs);
+
+  const paramMaxima = useMemo(() => {
+    const out: Record<string, number> = {};
+    selectedParameters.forEach((param) => {
+      const vals = rows.map(r => r[param]).filter((v): v is number => v != null && isFinite(v));
+      out[param] = vals.length > 0 ? Math.max(...vals.map(v => Math.abs(v)), 1) : 1;
+    });
+    return out;
+  }, [rows, selectedParameters]);
+
+  const matchIndices = useMemo(() => {
+    if (!searchValue.trim() || !searchOpen) return [];
+    const q = searchValue.toLowerCase();
+    return rows.reduce<number[]>((acc, row, idx) => {
+      const haystack = [
+        new Date(row.timestamp).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        row.phase,
+        row.flight_id,
+        row.tail_number,
+        ...selectedParameters.map(param => row[param] == null ? '' : String(row[param])),
+      ].join(' ').toLowerCase();
+      if (haystack.includes(q)) acc.push(idx);
+      return acc;
+    }, []);
+  }, [rows, searchOpen, searchValue, selectedParameters]);
+
+  useEffect(() => {
+    if (matchIndices.length === 0) return;
+    const row = tableContainerRef.current?.querySelector(`[data-row="${matchIndices[currentMatch]}"]`);
+    if (row instanceof HTMLElement) row.scrollIntoView({ block: 'nearest' });
+  }, [currentMatch, matchIndices]);
+
+  return (
+    <div className="relative">
+      <FloatingSearchPopup
+        isOpen={searchOpen}
+        onClose={onCloseSearch}
+        value={searchValue}
+        onChange={onSearchChange}
+        matchCount={matchIndices.length}
+        currentMatch={currentMatch}
+        onNavigate={onNavigateMatch}
+        placeholder="חיפוש בטבלת הסיגנלים..."
+      />
+      <div ref={tableContainerRef} className={`overflow-auto max-h-[720px] ${searchOpen ? 'pt-10' : ''}`}>
+        <table className="w-full text-xs">
+          <thead className="sticky top-0 z-10 border-b bg-muted/90 backdrop-blur">
+            <tr>
+              <th className="w-8 px-3 py-2 text-right font-medium text-muted-foreground">#</th>
+              {colCfg.visibleCols.map(col => (
+                <th
+                  key={col.key}
+                  style={{ textAlign: colCfg.getAlign(col.key) }}
+                  className="group cursor-pointer select-none px-3 py-2 font-medium text-muted-foreground hover:bg-muted/50"
+                >
+                  <span className="flex items-center justify-end gap-1">
+                    {colCfg.getLabel(col.key, col.label)}
+                    {colCfg.hasChanges(col.key) && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
+                    <button
+                      className="rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-muted"
+                      onClick={e => { e.stopPropagation(); setColMenuKey(col.key); setColMenuAnchor(e.currentTarget); }}
+                    >
+                      <MoreVertical className="h-3 w-3" />
+                    </button>
+                  </span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {rows.map((row, idx) => {
+              const isMatch = matchIndices.includes(idx);
+              const isCurrent = matchIndices[currentMatch] === idx;
+              return (
+                <tr
+                  key={`${row.timestamp}-${idx}`}
+                  data-row={idx}
+                  onClick={() => setSelectedRow(prev => prev === idx ? null : idx)}
+                  className={`cursor-pointer transition-colors ${
+                    selectedRow === idx ? 'bg-primary/10 ring-1 ring-inset ring-primary/30' :
+                    isCurrent ? 'bg-amber-100/60 dark:bg-amber-900/30' :
+                    isMatch ? 'bg-yellow-50/60 dark:bg-yellow-900/20' :
+                    'hover:bg-muted/30'
+                  }`}
+                >
+                  <td className="px-3 py-2 text-muted-foreground">{idx + 1}</td>
+                  {!colCfg.isHidden('timestamp') && (
+                    <td style={{ textAlign: colCfg.getAlign('timestamp') }} className="whitespace-nowrap px-3 py-2 font-mono">
+                      {new Date(row.timestamp).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </td>
+                  )}
+                  {!colCfg.isHidden('phase') && (
+                    <td style={{ textAlign: colCfg.getAlign('phase') }} className="px-3 py-2">
+                      {PHASE_LABELS_HE[row.phase] ?? row.phase ?? '—'}
+                    </td>
+                  )}
+                  {!colCfg.isHidden('flight_id') && (
+                    <td style={{ textAlign: colCfg.getAlign('flight_id') }} className="px-3 py-2 font-mono">
+                      {row.flight_id ?? '—'}
+                    </td>
+                  )}
+                  {!colCfg.isHidden('tail_number') && (
+                    <td style={{ textAlign: colCfg.getAlign('tail_number') }} className="px-3 py-2">
+                      {row.tail_number ?? '—'}
+                    </td>
+                  )}
+                  {selectedParameters.map((param, paramIdx) => (
+                    colCfg.isHidden(param) ? null : (
+                      <td key={param} style={{ textAlign: colCfg.getAlign(param) }} className="min-w-[180px] px-3 py-2">
+                        {typeof row[param] === 'number' && isFinite(row[param]) ? (
+                          <ProgressCell
+                            value={row[param]}
+                            max={paramMaxima[param] || 1}
+                            color={getParamColor(param, paramIdx)}
+                          />
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    )
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {rows.length === 0 && <div className="py-8 text-center text-xs text-muted-foreground">אין נתונים</div>}
+      </div>
+      {colMenuKey && (
+        <ColumnContextMenu
+          colKey={colMenuKey}
+          defaultLabel={colDefs.find(c => c.key === colMenuKey)?.label ?? colMenuKey}
+          config={colCfg.configs[colMenuKey] ?? {}}
+          onUpdate={u => colCfg.updateColumn(colMenuKey, u)}
+          onReset={() => colCfg.resetColumn(colMenuKey)}
+          onClose={() => { setColMenuKey(null); setColMenuAnchor(null); }}
+          anchorEl={colMenuAnchor}
+        />
+      )}
+    </div>
+  );
+};
 
 // ── Main component ────────────────────────────────────────────────
 export const SignalsTab: React.FC = memo(() => {
@@ -677,6 +910,11 @@ export const SignalsTab: React.FC = memo(() => {
   const [showPhaseBands, setShowPhaseBands]          = useState(true);
   const [showGraphEditor, setShowGraphEditor]        = useState(false);
   const [showFullScreen, setShowFullScreen]          = useState(false);
+  const [showSignalTable, setShowSignalTable]        = useState(false);
+  const [showSignalTableFullscreen, setShowSignalTableFullscreen] = useState(false);
+  const [showSignalSearch, setShowSignalSearch]      = useState(false);
+  const [signalSearch, setSignalSearch]              = useState('');
+  const [signalCurrentMatch, setSignalCurrentMatch]  = useState(0);
   const [focusedPhase, setFocusedPhase]             = useState<string | null>(null);
   // Forensic extensions
   const [showMovingAvg, setShowMovingAvg]           = useState(false);
@@ -685,6 +923,11 @@ export const SignalsTab: React.FC = memo(() => {
   const [pendingAnnotation, setPendingAnnotation]   = useState<{ timestamp: number } | null>(null);
   const [annotationDraft, setAnnotationDraft]       = useState('');
   const [annotationDraftType, setAnnotationDraftType] = useState<ChartAnnotation['type']>('note');
+  const [pendingSignalSelection, setPendingSignalSelection] = useState<{
+    start: number;
+    end: number;
+    data: any[];
+  } | null>(null);
   const [hoverTs, setHoverTs]                        = useState<number | null>(null);
   const handleChartHover = useCallback((ts: number | null) => setHoverTs(ts), []);
 
@@ -759,24 +1002,111 @@ export const SignalsTab: React.FC = memo(() => {
       : null,
   [selectedFlight, processedFlights]);
 
+  const focusedPhaseBands = useMemo(() =>
+    focusedPhase ? phaseBands.filter(b => b.phase === focusedPhase) : [],
+  [focusedPhase, phaseBands]);
+
+  const visibleChartData = useMemo(() =>
+    focusedPhaseBands.length > 0
+      ? chartData.filter(d => focusedPhaseBands.some(b => d.timestamp >= b.start && d.timestamp <= b.end))
+      : chartData,
+  [chartData, focusedPhaseBands]);
+
+  const signalTableCsvData = useMemo(() =>
+    visibleChartData.map(row => ({
+      זמן: new Date(row.timestamp).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      שלב: PHASE_LABELS_HE[row.phase] ?? row.phase ?? '',
+      טיסה: row.flight_id ?? '',
+      זנב: row.tail_number ?? '',
+      ...Object.fromEntries(selectedParameters.map(param => [PARAMETER_THRESHOLDS[param]?.labelHe ?? param, row[param] ?? ''])),
+    })),
+  [visibleChartData, selectedParameters]);
+
   const formatTimestamp = useCallback((ts: number) =>
     new Date(ts).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }),
   []);
+
+  const signalMatchCount = useMemo(() => {
+    if (!showSignalSearch || !signalSearch.trim()) return 0;
+    const q = signalSearch.toLowerCase();
+    return visibleChartData.reduce((acc, row) => {
+      const haystack = [
+        new Date(row.timestamp).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        row.phase,
+        row.flight_id,
+        row.tail_number,
+        ...selectedParameters.map(param => row[param] == null ? '' : String(row[param])),
+      ].join(' ').toLowerCase();
+      return acc + (haystack.includes(q) ? 1 : 0);
+    }, 0);
+  }, [showSignalSearch, signalSearch, visibleChartData, selectedParameters]);
+
+  const navigateSignalMatch = useCallback((direction: 'up' | 'down') => {
+    if (signalMatchCount === 0) return;
+    setSignalCurrentMatch(prev => {
+      if (direction === 'down') return (prev + 1) % signalMatchCount;
+      return (prev - 1 + signalMatchCount) % signalMatchCount;
+    });
+  }, [signalMatchCount]);
+
+  useEffect(() => {
+    setSignalCurrentMatch(0);
+  }, [signalSearch, visibleChartData.length]);
+
+  useEffect(() => {
+    setPendingSignalSelection(null);
+  }, [selectedFlight, focusedPhase, selectedParameters]);
 
 
   const handleBrushChange = useCallback((brushData: any) => {
     const si = brushData?.startIndex, ei = brushData?.endIndex;
     if (si == null || ei == null || si === ei) return;
-    const start = chartData[si]?.timestamp, end = chartData[ei]?.timestamp;
+    const start = visibleChartData[si]?.timestamp, end = visibleChartData[ei]?.timestamp;
     if (!start || !end) return;
-    const slice = chartData.slice(si, ei + 1);
+    const slice = visibleChartData.slice(si, ei + 1);
     const sd = new Date(start);
     createSelectionSet({
       name: `${sd.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })} ${sd.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })} (${Math.round((end - start) / 60000)} דק)`,
       color: getParamColor(selectedParameters[0] ?? '', 0),
       type: 'time-range', data: slice, source: 'signals',
     });
-  }, [chartData, createSelectionSet, selectedParameters]);
+  }, [visibleChartData, createSelectionSet, selectedParameters]);
+
+  const handlePendingSelectionBrushChange = useCallback((brushData: any) => {
+    const si = brushData?.startIndex;
+    const ei = brushData?.endIndex;
+    if (si == null || ei == null || si === ei) {
+      setPendingSignalSelection(null);
+      return;
+    }
+
+    const start = visibleChartData[si]?.timestamp;
+    const end = visibleChartData[ei]?.timestamp;
+    if (!start || !end) {
+      setPendingSignalSelection(null);
+      return;
+    }
+
+    setPendingSignalSelection({
+      start,
+      end,
+      data: visibleChartData.slice(si, ei + 1),
+    });
+  }, [visibleChartData]);
+
+  const savePendingSignalSelection = useCallback(() => {
+    if (!pendingSignalSelection) return;
+
+    const startDate = new Date(pendingSignalSelection.start);
+    createSelectionSet({
+      name: `${startDate.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })} ${startDate.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })} (${Math.round((pendingSignalSelection.end - pendingSignalSelection.start) / 60000)} ׳“׳§)`,
+      color: getParamColor(selectedParameters[0] ?? '', 0),
+      type: 'time-range',
+      data: pendingSignalSelection.data,
+      source: 'signals',
+    });
+    setPendingSignalSelection(null);
+  }, [pendingSignalSelection, createSelectionSet, selectedParameters]);
 
   const handleParamToggle = useCallback((param: string) => {
     setSelectedParameters(prev =>
@@ -847,8 +1177,6 @@ export const SignalsTab: React.FC = memo(() => {
     return (info.max !== undefined && mx > info.max) || (info.min !== undefined && mn < info.min);
   }).length;
 
-  const uniquePhases = [...new Set(phaseBands.map(b => b.phase))];
-
   return (
     <TooltipProvider>
       <div className="space-y-3" dir="rtl">
@@ -859,11 +1187,11 @@ export const SignalsTab: React.FC = memo(() => {
         )}
 
         {/* Controls row */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2" dir="rtl">
           <select
             value={selectedFlight}
             onChange={e => setSelectedFlight(e.target.value)}
-            className="h-8 rounded-md border border-input bg-background px-2.5 text-sm"
+            className="h-10 min-w-[270px] w-fit rounded-lg border bg-card px-4 text-sm text-card-foreground text-right shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             <option value="all">כל הטיסות ({processedFlights.length})</option>
             {[...processedFlights].sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()).map(f => (
@@ -872,21 +1200,6 @@ export const SignalsTab: React.FC = memo(() => {
               </option>
             ))}
           </select>
-
-          {/* Phase filter dropdown — shows all phases present in data */}
-          {uniquePhases.length > 1 && (
-            <select
-              value={focusedPhase ?? ''}
-              onChange={e => setFocusedPhase(e.target.value || null)}
-              className="h-8 rounded-md border border-input bg-background px-2.5 text-sm"
-              title="סנן לפי שלב טיסה"
-            >
-              <option value="">כל השלבים ({uniquePhases.length})</option>
-              {uniquePhases.map(p => (
-                <option key={p} value={p}>{PHASE_LABELS_HE[p] ?? p}</option>
-              ))}
-            </select>
-          )}
 
           <Tooltip>
             <TooltipTrigger>
@@ -941,7 +1254,7 @@ export const SignalsTab: React.FC = memo(() => {
                 {breachCount} חריגות
               </Badge>
             )}
-            <Badge variant="secondary">{chartData.length.toLocaleString()} נקודות</Badge>
+            <Badge variant="secondary">{visibleChartData.length.toLocaleString()} נקודות</Badge>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="outline" size="sm" onClick={exportSnapshot} className="gap-1.5">
@@ -953,9 +1266,6 @@ export const SignalsTab: React.FC = memo(() => {
             </Tooltip>
             <Button variant="outline" size="sm" onClick={() => setShowGraphEditor(true)}>
               <Settings className="h-3.5 w-3.5" />
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setShowFullScreen(true)}>
-              <Maximize2 className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
@@ -992,6 +1302,24 @@ export const SignalsTab: React.FC = memo(() => {
         )}
 
         {/* Annotations list — shown when annotations exist */}
+        {pendingSignalSelection && (
+          <div className="flex items-center gap-2 rounded-lg border border-sky-300/50 bg-sky-50 px-3 py-2 text-xs text-sky-950" dir="rtl">
+            <span className="font-medium">בחירה זמנית:</span>
+            <span className="font-mono">
+              {new Date(pendingSignalSelection.start).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </span>
+            <span>עד</span>
+            <span className="font-mono">
+              {new Date(pendingSignalSelection.end).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </span>
+            <span className="text-sky-800/80">{pendingSignalSelection.data.length} נקודות</span>
+            <div className="mr-auto flex items-center gap-2">
+              <Button size="sm" className="h-7 text-xs" onClick={savePendingSignalSelection}>שמור בחירה</Button>
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setPendingSignalSelection(null)}>בטל</Button>
+            </div>
+          </div>
+        )}
+
         {annotations.length > 0 && (
           <div className="rounded-lg border border-border bg-muted/20 p-2 space-y-1" dir="rtl">
             <div className="flex items-center justify-between text-xs text-muted-foreground pb-1 border-b">
@@ -1089,11 +1417,51 @@ export const SignalsTab: React.FC = memo(() => {
         <div className="grid grid-cols-12 gap-4 items-start">
           {/* Charts + StatsBar column */}
           <div className="col-span-9 space-y-2">
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-card/80 px-3 py-2 shadow-sm">
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-semibold">גרפי סיגנלים</span>
+                <HelpTooltip text="אפשר לעבור בין גרף לטבלה, לחפש בתוך הטבלה, לפתוח תפריט עמודות ולהיכנס למסך מלא כמו בלשוניות ההתפלגויות והקורלציות." />
+                {focusedPhase && (
+                  <Badge variant="outline" className="text-[10px]">
+                    {PHASE_LABELS_HE[focusedPhase] ?? focusedPhase}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {showSignalTable && (
+                  <button
+                    onClick={() => {
+                      setShowSignalSearch(v => !v);
+                      if (showSignalSearch) {
+                        setSignalSearch('');
+                        setSignalCurrentMatch(0);
+                      }
+                    }}
+                    className={`inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground ${showSignalSearch ? 'bg-muted text-foreground' : ''}`}
+                    title="חפש בטבלה"
+                  >
+                    <Search className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                <ChartToolbar
+                  csvData={signalTableCsvData}
+                  exportFilename={`signals_${selectedFlight || 'all'}`}
+                  onToggleTable={() => {
+                    setShowSignalTable(v => !v);
+                    setShowSignalSearch(false);
+                    setSignalSearch('');
+                    setSignalCurrentMatch(0);
+                  }}
+                  showingTable={showSignalTable}
+                  onFullscreen={() => showSignalTable ? setShowSignalTableFullscreen(true) : setShowFullScreen(true)}
+                />
+              </div>
+            </div>
             {/* Synchronized crosshair tooltip — shows ALL parameters at hovered timestamp */}
-            {selectedParameters.length > 0 && (
+            {!showSignalTable && selectedParameters.length > 0 && (
               <MultiParamHoverPanel
                 ts={hoverTs}
-                chartData={chartData}
+                chartData={visibleChartData}
                 parameters={selectedParameters}
               />
             )}
@@ -1101,31 +1469,44 @@ export const SignalsTab: React.FC = memo(() => {
               <div className="flex items-center justify-center h-48 text-muted-foreground text-sm border rounded-lg">
                 בחר פרמטרים להצגה
               </div>
+            ) : showSignalTable ? (
+              <SignalDataTable
+                rows={visibleChartData}
+                selectedParameters={selectedParameters}
+                searchOpen={showSignalSearch}
+                searchValue={signalSearch}
+                currentMatch={signalCurrentMatch}
+                onCloseSearch={() => {
+                  setShowSignalSearch(false);
+                  setSignalSearch('');
+                  setSignalCurrentMatch(0);
+                }}
+                onSearchChange={value => {
+                  setSignalSearch(value);
+                  setSignalCurrentMatch(0);
+                }}
+                onNavigateMatch={navigateSignalMatch}
+              />
             ) : (
-              selectedParameters.map((param, idx) => {
-                const focusBands = focusedPhase ? phaseBands.filter(b => b.phase === focusedPhase) : [];
-                const filteredData = focusBands.length > 0
-                  ? chartData.filter(d => focusBands.some(b => d.timestamp >= b.start && d.timestamp <= b.end))
-                  : chartData;
-                return (
-                  <ParameterSubchart
-                    key={param} param={param} paramIdx={idx}
-                    data={filteredData}
-                    phaseBands={focusedPhase ? phaseBands.filter(b => b.phase === focusedPhase) : phaseBands}
-                    showPhaseBands={showPhaseBands}
-                    isLast={idx === selectedParameters.length - 1}
-                    onBrushChange={idx === selectedParameters.length - 1 ? handleBrushChange : undefined}
-                    formatTimestamp={formatTimestamp}
-                    annotations={annotations}
-                    showMovingAvg={showMovingAvg}
-                    onChartClick={annotationMode ? handleChartClick : undefined}
-                    onHover={handleChartHover}
-                  />
-                );
-              })
+              selectedParameters.map((param, idx) => (
+                <ParameterSubchart
+                  key={param} param={param} paramIdx={idx}
+                  data={visibleChartData}
+                  phaseBands={focusedPhase ? focusedPhaseBands : phaseBands}
+                  showPhaseBands={showPhaseBands}
+                  isLast={idx === selectedParameters.length - 1}
+                  onBrushChange={idx === selectedParameters.length - 1 ? handlePendingSelectionBrushChange : undefined}
+                  formatTimestamp={formatTimestamp}
+                  annotations={annotations}
+                  showMovingAvg={showMovingAvg}
+                  onChartClick={annotationMode ? handleChartClick : undefined}
+                  onHover={handleChartHover}
+                  focusedPhase={focusedPhase}
+                />
+              ))
             )}
             {/* StatsBar directly below charts — visually unified with the chart column */}
-            <StatsBar data={chartData} parameters={selectedParameters} />
+            <StatsBar data={visibleChartData} parameters={selectedParameters} />
           </div>
 
           {/* SelectionSetsPanel — sticky, stretches alongside charts+stats */}
@@ -1140,13 +1521,36 @@ export const SignalsTab: React.FC = memo(() => {
           initialData={chartData}
           initialParameters={selectedParameters}
         />
+        <FullscreenOverlay
+          isOpen={showSignalTableFullscreen}
+          onClose={() => setShowSignalTableFullscreen(false)}
+          title="טבלת סיגנלים — מסך מלא"
+        >
+          <SignalDataTable
+            rows={visibleChartData}
+            selectedParameters={selectedParameters}
+            searchOpen={showSignalSearch}
+            searchValue={signalSearch}
+            currentMatch={signalCurrentMatch}
+            onCloseSearch={() => {
+              setShowSignalSearch(false);
+              setSignalSearch('');
+              setSignalCurrentMatch(0);
+            }}
+            onSearchChange={value => {
+              setSignalSearch(value);
+              setSignalCurrentMatch(0);
+            }}
+            onNavigateMatch={navigateSignalMatch}
+          />
+        </FullscreenOverlay>
         <FullScreenModal
           isOpen={showFullScreen}
           onClose={() => setShowFullScreen(false)}
-          data={chartData}
+          data={visibleChartData}
           parameters={selectedParameters}
           colors={selectedParameters.map((p, i) => getParamColor(p, i))}
-          phaseBands={phaseBands}
+          phaseBands={focusedPhase ? focusedPhaseBands : phaseBands}
           showPhaseBands={showPhaseBands}
           title="גרפי סיגנלים — חקירה"
           annotations={annotations}

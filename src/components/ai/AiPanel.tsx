@@ -310,7 +310,6 @@ export const AiPanel: React.FC<AiPanelProps> = ({
             <div className="flex items-start gap-2 p-2.5 rounded-lg bg-muted/30 border border-dashed text-[11px] text-muted-foreground">
               <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0 text-amber-500" />
               <div className="space-y-0.5">
-                <p>הגדרה: <code className="font-mono bg-muted px-1 rounded">AI_PROVIDER=anthropic</code> בשרת</p>
                 <p>כל פלט AI מסומן ודורש אישור מהנדס לפני פעולה.</p>
               </div>
             </div>

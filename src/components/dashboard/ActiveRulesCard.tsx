@@ -5,9 +5,11 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Settings, Play, Pause, AlertTriangle, CheckCircle } from "lucide-react";
 import { useCSVData } from "@/contexts/CSVDataContext";
+import { useNavigate } from "react-router-dom";
 
 export const ActiveRulesCard = () => {
   const { rules, toggleRuleActive } = useCSVData();
+  const navigate = useNavigate();
 
   const activeRules = rules.filter((rule) => rule.status === "approved" || rule.status === "pending-review");
   const enabledCount = activeRules.filter((rule) => rule.isActive).length;
@@ -25,7 +27,7 @@ export const ActiveRulesCard = () => {
               {activeRules.length} כללים זמינים • {enabledCount} פעילים
             </CardDescription>
           </div>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={() => navigate("/engineer/rules")}>
             ניהול כללים
           </Button>
         </div>
@@ -99,7 +101,7 @@ export const ActiveRulesCard = () => {
               <>
                 <Separator />
                 <div className="text-center">
-                  <Button variant="ghost" size="sm">
+                  <Button variant="ghost" size="sm" onClick={() => navigate("/engineer/rules")}>
                     הצג עוד {activeRules.length - 5} כללים
                   </Button>
                 </div>
